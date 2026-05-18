@@ -1,0 +1,8 @@
+[package]
+name = "rstsr-showcase-dft-grids"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libcint = "0.3"
+rstsr = { version = "0.7", default-features = false, features = ["col_major", "faer", "faer_as_default"] }
