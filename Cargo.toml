@@ -5,4 +5,6 @@ edition = "2024"
 
 [dependencies]
 libcint = "0.3"
+npyz = "0.9"
+zip = "8.6"
 rstsr = { version = "0.7", default-features = false, features = ["col_major", "faer", "faer_as_default"] }

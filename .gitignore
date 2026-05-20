@@ -8,6 +8,7 @@ tarpaulin-report.html
 .idea
 book
 *.npy
+*.npz
 repomix-output*
 .claude
 *.local*
