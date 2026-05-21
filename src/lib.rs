@@ -1,14 +1,14 @@
+pub mod error;
 pub mod flags;
 pub mod numint_matmul;
-pub mod pure_numint_matmul;
 
 pub mod prelude {
     #![allow(unused)]
 
     use super::*;
+    pub use crate::ni_check_shape;
+    pub use error::*;
     pub use flags::*;
-    pub use numint_matmul::*;
-    pub use pure_numint_matmul::*;
 
     pub(crate) use core::assert_matches;
     pub(crate) use libcint::prelude::*;
