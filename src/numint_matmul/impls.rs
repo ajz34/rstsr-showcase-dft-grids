@@ -47,7 +47,7 @@ impl NIMatMul {
             NIXCType::LAPL => 2,
         };
         let ao = self.get_cached_ao(deriv_level);
-        get_rho_from_dm_with_output(ao, dm, xctype)
+        get_rho_from_dm_with_output(ao, dm, xctype, None)
     }
 }
 

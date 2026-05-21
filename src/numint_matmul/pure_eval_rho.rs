@@ -1,6 +1,11 @@
 use super::prelude::*;
 
-pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIXCType) -> Result<Tsr, NIError> {
+pub fn get_rho_from_dm_with_output(
+    ao: TsrView,
+    dm: TsrView,
+    xctype: NIXCType,
+    buf: Option<&mut [f64]>,
+) -> Result<Tsr, NIError> {
     // ao: [ngrids, nao, ncomp]
     // dm: [nao, nao, nset]
     // output: [ngrids, ncomp', nset] in column-major, where ncomp' depends on the type of density
@@ -18,16 +23,20 @@ pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIXCType) -
     let nao = dm.shape()[0];
     let nset = dm.shape()[2];
     let ngrid = ao.shape()[0];
+    let device = ao.device().clone();
 
     // prepare output buffer
     let mut out = match xctype {
-        NIXCType::LDA => rt::zeros([ngrid, 1, nset]),
-        NIXCType::GGA => rt::zeros([ngrid, 4, nset]),  // rho, x, y, z
-        NIXCType::MGGA => rt::zeros([ngrid, 5, nset]), // rho, x, y, z, tau
-        NIXCType::LAPL => rt::zeros([ngrid, 6, nset]), // rho, x, y, z, tau, lapl
+        NIXCType::LDA => rt::zeros(([ngrid, 1, nset].f(), &device)), // rho only
+        NIXCType::GGA => rt::zeros(([ngrid, 4, nset].f(), &device)), // rho, x, y, z
+        NIXCType::MGGA => rt::zeros(([ngrid, 5, nset].f(), &device)), // rho, x, y, z, tau
+        NIXCType::LAPL => rt::zeros(([ngrid, 6, nset].f(), &device)), // rho, x, y, z, tau, lapl
     };
     // prepare temporary buffer
-    let mut scratch = rt::zeros([ngrid, nao]);
+    let buf_available = buf.as_ref().is_some_and(|b| b.len() >= nao * ngrid);
+    let mut buf_backup = if buf_available { None } else { Some(vec![0.0; ngrid * nao]) };
+    let buf_mut = buf_backup.as_mut().map_or_else(|| buf.unwrap(), |b| b.as_mut_slice());
+    let mut scratch = rt::asarray((buf_mut, [ngrid, nao].f(), &device));
 
     // handle deriv = 0 (rho only)
     match xctype {
@@ -43,17 +52,31 @@ pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIXCType) -
         },
         NIXCType::GGA => {
             ni_check_shape!(ao.shape()[2] >= 4, "For GGA, AO must have at least 4 components (rho, x, y, z)")?;
-            // rho_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 0)
-            // x_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 1)
-            // y_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 2)
-            // z_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 3)
+            // rho_g^A = sum_(u v) P_(u v)^A * ao_(g u) * ao_(g v); t = 0
+            // rho_(g t)^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v t, 0) * 2; t = 1, 2, 3
             for iset in 0..nset {
                 // 1. T1_(g u)^A = P_(u v)^A * ao_(g u)
                 scratch.matmul_from(ao.i((.., .., 0)), dm.i((.., .., iset)), 1.0, 0.0);
                 // 2. rho_(g t)^A = T1_(g u)^A * ao_(g u t, 0)
-                out.i_mut((.., .., iset)).vecdot_from(&scratch.i((.., .., None)), ao.i((.., .., 0..4)), 1);
+                out.i_mut((.., 0..4, iset)).vecdot_from(&scratch.i((.., .., None)), ao.i((.., .., 0..4)), 1);
                 // 3. x, y, z part multiplies 2 due to symmetric
                 *&mut out.i_mut((.., 1..4, iset)) *= 2.0;
+            }
+        },
+        NIXCType::MGGA => {
+            ni_check_shape!(ao.shape()[2] >= 4, "For GGA, AO must have at least 4 components (rho, x, y, z)")?;
+            for iset in 0..nset {
+                // same part for gga
+                scratch.matmul_from(ao.i((.., .., 0)), dm.i((.., .., iset)), 1.0, 0.0);
+                out.i_mut((.., 0..4, iset)).vecdot_from(&scratch.i((.., .., None)), ao.i((.., .., 0..4)), 1);
+                *&mut out.i_mut((.., 1..4, iset)) *= 2.0;
+                // tau part
+                // tau_g^A = 0.5 * sum_(u v t) P_(u v)^A ao_(g u t) ao_(g v t)
+                for t in 1..4 {
+                    scratch.matmul_from(ao.i((.., .., t)), dm.i((.., .., iset)), 1.0, 0.0);
+                    *&mut out.i_mut((.., 4, iset)) += rt::vecdot(&scratch, ao.i((.., .., t)), 1);
+                }
+                *&mut out.i_mut((.., 4, iset)) *= 0.5;
             }
         },
         _ => panic!("Unsupported XC type: {xctype:?}"),
