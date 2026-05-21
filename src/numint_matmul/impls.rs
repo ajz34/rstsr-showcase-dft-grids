@@ -47,7 +47,17 @@ impl NIMatMul {
             NIXCType::LAPL => 2,
         };
         let ao = self.get_cached_ao(deriv_level);
-        get_rho_from_dm_with_output(ao, dm, xctype, None)
+
+        let ngrid = ao.shape()[0];
+        let nao = ao.shape()[1];
+        let nset = dm.shape()[2];
+
+        let out_shape = [ngrid, xctype.num_rho_components(), nset];
+        let device = ao.device().clone();
+        let mut out = rt::zeros((out_shape.f(), &device));
+        let mut buf = vec![0.0; ngrid * nao];
+        get_rho_from_dm_with_output(ao, dm, xctype, out.view_mut(), &mut buf)?;
+        Ok(out)
     }
 }
 

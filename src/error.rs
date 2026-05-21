@@ -42,7 +42,7 @@ impl NIIntoUsizeVec for Vec<usize> {
 #[macro_export]
 macro_rules! ni_check_shape {
     ($expected:expr, $actual:expr, $msg:expr) => {{
-        if $expected != $actual {
+        if $expected.into_usize_vec() != $actual.into_usize_vec() {
             let str_expected = stringify!($expected);
             let str_actual = stringify!($actual);
             Err(NIError::ShapeMismatch {

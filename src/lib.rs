@@ -12,6 +12,8 @@ pub mod prelude {
     pub use flags::*;
     pub use numint_matmul::structs::*;
 
+    pub(crate) use NIXCType::*;
+
     pub(crate) use core::assert_matches;
     pub(crate) use libcint::prelude::*;
     pub(crate) use rstsr::prelude::*;
