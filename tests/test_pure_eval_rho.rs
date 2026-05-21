@@ -30,4 +30,9 @@ fn get_rho_from_dm_with_output() {
     let rho_mgga = ni_obj.get_rho_from_dm_with_output(dm.unsqueeze(-1), NIXCType::MGGA).unwrap();
     assert_eq!(rho_mgga.shape(), &[ngrids, 5, 1]);
     assert!((fp(rho_mgga.view()) - 17140.300791589965).abs() < 1e-6);
+    // rho (lapl)
+    let rho_lapl = ni_obj.get_rho_from_dm_with_output(dm.unsqueeze(-1), NIXCType::LAPL).unwrap();
+    assert_eq!(rho_lapl.shape(), &[ngrids, 6, 1]);
+    assert!((fp(rho_lapl.i((.., ..5, ..))) - 17140.300791589965).abs() < 1e-6);
+    assert!((fp(rho_lapl.i((.., 5, ..))) - 2470300.1875723703).abs() < 1e-4);
 }

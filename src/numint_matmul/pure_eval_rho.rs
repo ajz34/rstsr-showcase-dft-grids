@@ -45,12 +45,23 @@ pub fn get_rho_from_dm_with_output(
             out.i_mut((.., 1..4, iset)).vecdot_from(&scratch.i((.., .., None)), ao.i((.., .., 1..4)), 1);
             *&mut out.i_mut((.., 1..4, iset)) *= 2.0;
         }
+        // lapl part (second derivative of AO)
+        if matches!(xctype, LAPL) {
+            for t in [4, 7, 9] {
+                *&mut out.i_mut((.., 5, iset)) += 2.0 * rt::vecdot(&scratch, ao.i((.., .., t)), 1);
+            }
+        }
         // tau part
         if matches!(xctype, MGGA | LAPL) {
             for t in 1..4 {
                 scratch.matmul_from(ao.i((.., .., t)), dm.i((.., .., iset)), 0.5, 0.0);
                 *&mut out.i_mut((.., 4, iset)) += rt::vecdot(&scratch, ao.i((.., .., t)), 1);
             }
+        }
+        // lapl part (tau contribution)
+        if matches!(xctype, LAPL) {
+            let tau_contrib = 4.0 * out.i((.., 4, iset));
+            *&mut out.i_mut((.., 5, iset)) += tau_contrib;
         }
     }
 
