@@ -24,14 +24,14 @@ impl NIMatMul {
         let max_cached_deriv = self
             .cache_tensor
             .keys()
-            .filter_map(|k| if k.starts_with("ao_deriv") { k["ao_deriv".len()..].parse::<usize>().ok() } else { None })
+            .filter_map(|k| k.strip_prefix("ao_deriv").and_then(|s| s.parse::<usize>().ok()))
             .max();
         // if the requested deriv is already cached, return it
-        if let Some(max_deriv) = max_cached_deriv {
-            if max_deriv >= deriv {
-                let cache_key = format!("ao_deriv{}", deriv);
-                return self.cache_tensor.get(&cache_key).unwrap().i((.., .., ..AO_DERIV_DIM[deriv]));
-            }
+        if let Some(max_deriv) = max_cached_deriv
+            && max_deriv >= deriv
+        {
+            let cache_key = format!("ao_deriv{}", deriv);
+            return self.cache_tensor.get(&cache_key).unwrap().i((.., .., ..AO_DERIV_DIM[deriv]));
         }
 
         // otherwise, compute and cache all missing ao deriv up to the requested one
@@ -41,7 +41,12 @@ impl NIMatMul {
     }
 
     pub fn get_rho_from_dm_with_output(&mut self, dm: TsrView, xctype: NIXCType) -> Result<Tsr, NIError> {
-        let ao = self.get_cached_ao(0); // get AO values (deriv=0)
+        let deriv_level = match xctype {
+            NIXCType::LDA => 0,
+            NIXCType::GGA | NIXCType::MGGA => 1,
+            NIXCType::LAPL => 2,
+        };
+        let ao = self.get_cached_ao(deriv_level);
         get_rho_from_dm_with_output(ao, dm, xctype)
     }
 }

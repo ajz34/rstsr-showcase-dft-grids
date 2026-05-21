@@ -1,3 +1,4 @@
+#![allow(clippy::deref_addrof)]
 pub mod error;
 pub mod flags;
 pub mod numint_matmul;

@@ -26,6 +26,8 @@ pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIXCType) -
         NIXCType::MGGA => rt::zeros([ngrid, 5, nset]), // rho, x, y, z, tau
         NIXCType::LAPL => rt::zeros([ngrid, 6, nset]), // rho, x, y, z, tau, lapl
     };
+    // prepare temporary buffer
+    let mut scratch = rt::zeros([ngrid, nao]);
 
     // handle deriv = 0 (rho only)
     match xctype {
@@ -34,9 +36,24 @@ pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIXCType) -
             // rho_g^A = sum_(u v) P_(u v)^A * ao_(g u) * ao_(g v)
             for iset in 0..nset {
                 // 1. T1_(g u)^A = P_(u v)^A * ao_(g u)
-                let t1 = &ao.i((.., .., 0)) % dm.i((.., .., iset));
                 // 2. rho_g^A = T1_(g u)^A * ao_(g u)
-                rt::vecdot_from(out.i_mut((.., 0, iset)), &t1, &ao.i((.., .., 0)), 1);
+                scratch.matmul_from(ao.i((.., .., 0)), dm.i((.., .., iset)), 1.0, 0.0);
+                out.i_mut((.., 0, iset)).vecdot_from(&scratch, ao.i((.., .., 0)), 1);
+            }
+        },
+        NIXCType::GGA => {
+            ni_check_shape!(ao.shape()[2] >= 4, "For GGA, AO must have at least 4 components (rho, x, y, z)")?;
+            // rho_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 0)
+            // x_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 1)
+            // y_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 2)
+            // z_g^A = sum_(u v) P_(u v)^A * ao_(g u, 0) * ao_(g v, 3)
+            for iset in 0..nset {
+                // 1. T1_(g u)^A = P_(u v)^A * ao_(g u)
+                scratch.matmul_from(ao.i((.., .., 0)), dm.i((.., .., iset)), 1.0, 0.0);
+                // 2. rho_(g t)^A = T1_(g u)^A * ao_(g u t, 0)
+                out.i_mut((.., .., iset)).vecdot_from(&scratch.i((.., .., None)), ao.i((.., .., 0..4)), 1);
+                // 3. x, y, z part multiplies 2 due to symmetric
+                *&mut out.i_mut((.., 1..4, iset)) *= 2.0;
             }
         },
         _ => panic!("Unsupported XC type: {xctype:?}"),
