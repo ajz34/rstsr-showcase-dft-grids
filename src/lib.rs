@@ -9,6 +9,7 @@ pub mod prelude {
     pub use crate::ni_check_shape;
     pub use error::*;
     pub use flags::*;
+    pub use numint_matmul::structs::*;
 
     pub(crate) use core::assert_matches;
     pub(crate) use libcint::prelude::*;
@@ -16,7 +17,7 @@ pub mod prelude {
     pub(crate) use std::collections::HashMap;
 
     pub(crate) type DeviceTsr = DeviceFaer;
-    pub(crate) type Tsr = Tensor<f64, DeviceTsr, IxD>;
-    pub(crate) type TsrView<'a> = TensorView<'a, f64, DeviceTsr, IxD>;
-    pub(crate) type TsrMut<'a> = TensorMut<'a, f64, DeviceTsr, IxD>;
+    pub(crate) type Tsr<T = f64> = Tensor<T, DeviceTsr, IxD>;
+    pub(crate) type TsrView<'a, T = f64> = TensorView<'a, T, DeviceTsr, IxD>;
+    pub(crate) type TsrMut<'a, T = f64> = TensorMut<'a, T, DeviceTsr, IxD>;
 }

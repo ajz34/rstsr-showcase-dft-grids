@@ -1,6 +1,6 @@
-use crate::prelude::*;
+use super::prelude::*;
 
-pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIFlagXCType) -> Result<Tsr, NIError> {
+pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIXCType) -> Result<Tsr, NIError> {
     // ao: [ngrids, nao, ncomp]
     // dm: [nao, nao, nset]
     // output: [ngrids, ncomp', nset] in column-major, where ncomp' depends on the type of density
@@ -19,17 +19,27 @@ pub fn get_rho_from_dm_with_output(ao: TsrView, dm: TsrView, xctype: NIFlagXCTyp
     let nset = dm.shape()[2];
     let ngrid = ao.shape()[0];
 
+    // prepare output buffer
+    let mut out = match xctype {
+        NIXCType::LDA => rt::zeros([ngrid, 1, nset]),
+        NIXCType::GGA => rt::zeros([ngrid, 4, nset]),  // rho, x, y, z
+        NIXCType::MGGA => rt::zeros([ngrid, 5, nset]), // rho, x, y, z, tau
+        NIXCType::LAPL => rt::zeros([ngrid, 6, nset]), // rho, x, y, z, tau, lapl
+    };
+
     // handle deriv = 0 (rho only)
     match xctype {
-        NIFlagXCType::LDA => {
+        NIXCType::LDA => {
             ni_check_shape!(ao.shape()[2] >= 1, "For rho, AO must have 1 component")?;
             // rho_g^A = sum_(u v) P_(u v)^A * ao_(g u) * ao_(g v)
-            // 1. T1_(g u)^A = P_(u v)^A * ao_(g u)
-            let t1 = &ao.i((.., .., 0)) % dm.reshape((nao, nao * nset));
-            let t1 = t1.into_shape((ngrid, nao, nset));
-            // 2. rho_g^A = T1_(g u)^A * ao_(g u)
-            Ok(rt::vecdot(t1, ao.i((.., .., 0)), 1))
+            for iset in 0..nset {
+                // 1. T1_(g u)^A = P_(u v)^A * ao_(g u)
+                let t1 = &ao.i((.., .., 0)) % dm.i((.., .., iset));
+                // 2. rho_g^A = T1_(g u)^A * ao_(g u)
+                rt::vecdot_from(out.i_mut((.., 0, iset)), &t1, &ao.i((.., .., 0)), 1);
+            }
         },
         _ => panic!("Unsupported XC type: {xctype:?}"),
     }
+    Ok(out)
 }

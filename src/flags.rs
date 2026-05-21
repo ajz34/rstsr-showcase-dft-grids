@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum NIFlagXCType {
+pub enum NIXCType {
     LDA,
     GGA,
     MGGA,
