@@ -62,30 +62,31 @@ impl NIMatMul {
         Ok(out.into_shape(out_shape))
     }
 
-    pub fn make_rho_from_homogeneous_braket(&mut self, bra: TsrView, den_type: NIDenType) -> Result<Tsr, NIError> {
+    pub fn make_rho_from_homogeneous_braket(
+        &mut self,
+        bra_list: &[TsrView],
+        den_type: NIDenType,
+    ) -> Result<Tsr, NIError> {
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
         let ngrid = ao.shape()[0];
         let nao = ao.shape()[1];
-        ni_check_shape!(bra.ndim() >= 2, "Bra must be at least 2D")?;
-        ni_check_shape!(bra.shape()[0], nao, "Bra's first dimension must match AO dimension")?;
+        for bra in bra_list {
+            ni_check_shape!(bra.ndim(), 2, "Each braket must be 2D")?;
+            ni_check_shape!(bra.shape()[0], nao, "Bra's first dimension must match AO dimension")?;
+        }
 
         // reshape the bra to 3-dim [nao, nocc, nset]
-        let shape_suffix = bra.shape()[2..].to_vec();
-        let nocc = bra.shape()[1];
-        let nset = shape_suffix.iter().product();
-        let bra_reshaped = bra.reshape([nao, nocc, nset]);
+        let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
+        let nset = bra_list.len();
 
         // compute the output
         let out_shape = [ngrid, den_type.num_rho_comp(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        let mut buf = vec![0.0; 2 * ngrid * nocc];
-        get_rho_from_homogeneous_braket_with_output(ao, bra_reshaped.view(), den_type, out.view_mut(), &mut buf)?;
-
-        // reshape output to match the original shape
-        let out_shape = [ngrid, den_type.num_rho_comp()].iter().chain(shape_suffix.iter()).cloned().collect_vec();
-        Ok(out.into_shape(out_shape))
+        let mut buf = vec![0.0; 2 * ngrid * nocc_max];
+        get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out.view_mut(), &mut buf)?;
+        Ok(out)
     }
 }
 

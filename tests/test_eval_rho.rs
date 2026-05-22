@@ -60,19 +60,19 @@ fn get_rho_from_homogeneous_braket() {
     let bra = mo_coeff.bool_select(1, &occ_mask) * occ.sqrt().i((None, ..));
 
     // rho
-    let out_rho = ni_obj.make_rho_from_homogeneous_braket(bra.unsqueeze(-1), NIDenType::RHO).unwrap();
+    let out_rho = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], NIDenType::RHO).unwrap();
     assert_eq!(out_rho.shape(), &[ngrids, 1, 1]);
     assert!((fp(out_rho.view()) - -438.0303348067822).abs() < 1e-6);
     // sigma
-    let out_sigma = ni_obj.make_rho_from_homogeneous_braket(bra.unsqueeze(-1), NIDenType::SIGMA).unwrap();
+    let out_sigma = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], NIDenType::SIGMA).unwrap();
     assert_eq!(out_sigma.shape(), &[ngrids, 4, 1]);
     assert!((fp(out_sigma.view()) - 25704.14480085445).abs() < 1e-6);
     // tau
-    let out_tau = ni_obj.make_rho_from_homogeneous_braket(bra.unsqueeze(-1), NIDenType::TAU).unwrap();
+    let out_tau = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], NIDenType::TAU).unwrap();
     assert_eq!(out_tau.shape(), &[ngrids, 5, 1]);
     assert!((fp(out_tau.view()) - 17140.300791589965).abs() < 1e-6);
     // lapl
-    let out_lapl = ni_obj.make_rho_from_homogeneous_braket(bra.unsqueeze(-1), NIDenType::LAPL).unwrap();
+    let out_lapl = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], NIDenType::LAPL).unwrap();
     assert_eq!(out_lapl.shape(), &[ngrids, 6, 1]);
     assert!((fp(out_lapl.i((.., ..5, ..))) - 17140.300791589965).abs() < 1e-6);
     assert!((fp(out_lapl.i((.., 5, ..))) - 2470300.1875723703).abs() < 1e-4);
