@@ -3,7 +3,7 @@ use super::prelude::*;
 pub fn get_rho_from_dm_with_output(
     ao: TsrView,
     dm: TsrView,
-    xctype: NIXCType,
+    den_type: NIDenType,
     mut out: TsrMut,
     buf: &mut [f64],
 ) -> Result<(), NIError> {
@@ -26,11 +26,11 @@ pub fn get_rho_from_dm_with_output(
     let ngrid = ao.shape()[0];
     let device = ao.device().clone();
 
-    ni_check_shape!(out.shape().clone(), [ngrid, xctype.num_rho_components(), nset], "Output shape mismatch")?;
+    ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_rho_components(), nset], "Output shape mismatch")?;
     ni_check_shape!(buf.len() >= ngrid * nao, "Buffer length insufficient")?;
-    match xctype {
-        LDA => ni_check_shape!(ao.shape()[2] >= 1, "AO at least 1 component (rho)")?,
-        GGA | MGGA => ni_check_shape!(ao.shape()[2] >= 4, "AO at least 4 components (rho, x, y, z)")?,
+    match den_type {
+        RHO => ni_check_shape!(ao.shape()[2] >= 1, "AO at least 1 component (rho)")?,
+        SIGMA | TAU => ni_check_shape!(ao.shape()[2] >= 4, "AO at least 4 components (rho, x, y, z)")?,
         LAPL => ni_check_shape!(ao.shape()[2] >= 10, "AO at least 10 components")?,
     }
 
@@ -41,25 +41,25 @@ pub fn get_rho_from_dm_with_output(
         scratch.matmul_from(ao.i((.., .., 0)), dm.i((.., .., iset)), 1.0, 0.0);
         out.i_mut((.., 0, iset)).vecdot_from(&scratch, ao.i((.., .., 0)), 1);
         // grad rho part
-        if matches!(xctype, GGA | MGGA | LAPL) {
+        if matches!(den_type, SIGMA | TAU | LAPL) {
             out.i_mut((.., 1..4, iset)).vecdot_from(&scratch.i((.., .., None)), ao.i((.., .., 1..4)), 1);
             *&mut out.i_mut((.., 1..4, iset)) *= 2.0;
         }
         // lapl part (second derivative of AO)
-        if matches!(xctype, LAPL) {
+        if matches!(den_type, LAPL) {
             for t in [4, 7, 9] {
                 *&mut out.i_mut((.., 5, iset)) += 2.0 * rt::vecdot(&scratch, ao.i((.., .., t)), 1);
             }
         }
         // tau part
-        if matches!(xctype, MGGA | LAPL) {
+        if matches!(den_type, TAU | LAPL) {
             for t in 1..4 {
                 scratch.matmul_from(ao.i((.., .., t)), dm.i((.., .., iset)), 0.5, 0.0);
                 *&mut out.i_mut((.., 4, iset)) += rt::vecdot(&scratch, ao.i((.., .., t)), 1);
             }
         }
         // lapl part (tau contribution)
-        if matches!(xctype, LAPL) {
+        if matches!(den_type, LAPL) {
             let tau_contrib = 4.0 * out.i((.., 4, iset));
             *&mut out.i_mut((.., 5, iset)) += tau_contrib;
         }

@@ -19,19 +19,19 @@ fn get_rho_from_dm_with_output() {
     let coords_array = coords.to_owned().into_pack_array::<3>(0).into_vec();
     let mut ni_obj = NIMatMul::new(&cint.cint, &coords_array, &weights.to_vec());
     // rho (lda)
-    let rho_lda = ni_obj.get_rho_from_dm_with_output(dm.unsqueeze(-1), NIXCType::LDA).unwrap();
+    let rho_lda = ni_obj.make_rho_from_dm(dm.unsqueeze(-1), NIDenType::RHO).unwrap();
     assert_eq!(rho_lda.shape(), &[ngrids, 1, 1]);
     assert!((fp(rho_lda.view()) - -438.0303348067822).abs() < 1e-6);
     // rho (gga)
-    let rho_gga = ni_obj.get_rho_from_dm_with_output(dm.unsqueeze(-1), NIXCType::GGA).unwrap();
+    let rho_gga = ni_obj.make_rho_from_dm(dm.unsqueeze(-1), NIDenType::SIGMA).unwrap();
     assert_eq!(rho_gga.shape(), &[ngrids, 4, 1]);
     assert!((fp(rho_gga.view()) - 25704.14480085445).abs() < 1e-6);
     // rho (mgga)
-    let rho_mgga = ni_obj.get_rho_from_dm_with_output(dm.unsqueeze(-1), NIXCType::MGGA).unwrap();
+    let rho_mgga = ni_obj.make_rho_from_dm(dm.unsqueeze(-1), NIDenType::TAU).unwrap();
     assert_eq!(rho_mgga.shape(), &[ngrids, 5, 1]);
     assert!((fp(rho_mgga.view()) - 17140.300791589965).abs() < 1e-6);
     // rho (lapl)
-    let rho_lapl = ni_obj.get_rho_from_dm_with_output(dm.unsqueeze(-1), NIXCType::LAPL).unwrap();
+    let rho_lapl = ni_obj.make_rho_from_dm(dm.unsqueeze(-1), NIDenType::LAPL).unwrap();
     assert_eq!(rho_lapl.shape(), &[ngrids, 6, 1]);
     assert!((fp(rho_lapl.i((.., ..5, ..))) - 17140.300791589965).abs() < 1e-6);
     assert!((fp(rho_lapl.i((.., 5, ..))) - 2470300.1875723703).abs() < 1e-4);
