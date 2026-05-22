@@ -1,3 +1,14 @@
+pub const AO_DERIV_DIM: [usize; 5] = [1, 4, 10, 20, 35];
+
+/// Density type for numint.
+///
+/// - RHO: only density
+/// - SIGMA: density + gradient
+/// - TAU: density + gradient + kinetic energy density
+/// - LAPL: density + gradient + kinetic energy density + laplacian
+///
+/// Note for this enum, each higher-level density type also contains all components of the
+/// lower-level types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NIDenType {
     RHO,
@@ -13,7 +24,7 @@ impl NIDenType {
     /// - SIGMA: 4 components (density + 3 gradient components)
     /// - TAU: 5 components (density + 3 gradient components + kinetic energy density)
     /// - LAPL: 6 components (density + 3 gradient components + kinetic energy density + laplacian)
-    pub fn num_rho_components(&self) -> usize {
+    pub fn num_rho_comp(&self) -> usize {
         match self {
             NIDenType::RHO => 1,
             NIDenType::SIGMA => 4,
@@ -35,5 +46,15 @@ impl NIDenType {
             NIDenType::TAU => 1,
             NIDenType::LAPL => 2,
         }
+    }
+
+    /// Returns the number of AO components needed for this XC type
+    ///
+    /// - RHO: 1 component (AO value)
+    /// - SIGMA: 4 components (AO value + 3 gradient components)
+    /// - TAU: 4 components (AO value + 3 gradient components) [
+    /// - LAPL: 10 components (AO value + 3 gradient components + 6 second derivative components)
+    pub fn num_ao_comp(&self) -> usize {
+        AO_DERIV_DIM[self.num_ao_deriv()]
     }
 }
