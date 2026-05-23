@@ -107,6 +107,34 @@ impl<'a> NIMatMul<'a> {
         get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out.view_mut(), &mut buf)?;
         Ok(out)
     }
+
+    pub fn make_rho_from_mult_bra_mult_ket(
+        &mut self,
+        bra_list: &[TsrView],
+        ket_list: &[TsrView],
+        den_type: NIDenType,
+    ) -> Result<Tsr, NIError> {
+        let ao = self.get_cached_ao(den_type.num_ao_deriv());
+
+        let ngrid = ao.shape()[0];
+        let nao = ao.shape()[1];
+        for (bra, ket) in bra_list.iter().zip(ket_list.iter()) {
+            ni_check_shape!(bra.ndim(), 2, "Each bra must be 2D")?;
+            ni_check_shape!(ket.ndim(), 2, "Each ket must be 2D")?;
+            ni_check_shape!(nao, bra.shape()[0], "Bra first dimension must match AO dimension")?;
+            ni_check_shape!(nao, ket.shape()[0], "Ket first dimension must match AO dimension")?;
+            ni_check_shape!(bra.shape()[1], ket.shape()[1], "Bra and ket occupation must match")?;
+        }
+        let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
+        let nset = bra_list.len();
+
+        let out_shape = [ngrid, den_type.num_rho_comp(), nset];
+        let device = ao.device().clone();
+        let mut out = rt::zeros((out_shape.f(), &device));
+        let mut buf = vec![0.0; 3 * ngrid * nocc_max];
+        get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out.view_mut(), &mut buf)?;
+        Ok(out)
+    }
 }
 
 #[test]
