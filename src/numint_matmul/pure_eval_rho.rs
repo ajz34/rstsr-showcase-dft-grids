@@ -2,27 +2,24 @@ use super::prelude::*;
 
 pub fn get_rho_from_dm_with_output(
     ao: TsrView,
-    dm: TsrView,
+    dm_list: &[TsrView],
     den_type: NIDenType,
     mut out: TsrMut,
     buf: &mut [f64],
 ) -> Result<(), NIError> {
     // ao: [ngrids, nao, ncomp]
-    // dm: [nao, nao, nset]
-    // output: [ngrids, ncomp', nset] in column-major, where ncomp' depends on the type of density
-    // (e.g., 1 for rho, 1+3 for grad rho, 1+3+1 for tau, 1+3+1+1 for lapl rho)
-    // Note this function forces 3-d dimensionality.
+    // dm_list: each element is [nao, nao]
+    // output: [ngrids, ncomp', nset] in column-major
 
-    // force dimensions to be 3-d for easier handling
-    ni_check_shape!(dm.ndim(), 3, "Density matrix must be 3D")?;
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
+    let nao = ao.shape()[1];
 
-    // check sanity of shapes
-    ni_check_shape!(dm.shape()[0], dm.shape()[1], "Density matrix must be square")?;
-    ni_check_shape!(ao.shape()[1], dm.shape()[0], "AO dimension must match density matrix dimension")?;
-
-    let nao = dm.shape()[0];
-    let nset = dm.shape()[2];
+    for dm in dm_list {
+        ni_check_shape!(dm.ndim(), 2, "Each density matrix must be 2D")?;
+        ni_check_shape!(dm.shape()[0], nao, "Density matrix first dimension must match AO dimension")?;
+        ni_check_shape!(dm.shape()[1], nao, "Density matrix must be square")?;
+    }
+    let nset = dm_list.len();
     let ngrid = ao.shape()[0];
     let device = ao.device().clone();
 
@@ -32,9 +29,9 @@ pub fn get_rho_from_dm_with_output(
 
     let mut scr = rt::asarray((buf, [ngrid, nao].f(), &device));
 
-    for iset in 0..nset {
+    for (iset, dm) in dm_list.iter().enumerate() {
         // rho part
-        scr.matmul_from(ao.i((.., .., 0)), dm.i((.., .., iset)), 1.0, 0.0);
+        scr.matmul_from(ao.i((.., .., 0)), dm, 1.0, 0.0);
         out.i_mut((.., 0, iset)).vecdot_from(&scr, ao.i((.., .., 0)), 1);
         // sigma part
         if matches!(den_type, SIGMA | TAU | LAPL) {
@@ -50,7 +47,7 @@ pub fn get_rho_from_dm_with_output(
         // tau part
         if matches!(den_type, TAU | LAPL) {
             for t in 1..4 {
-                scr.matmul_from(ao.i((.., .., t)), dm.i((.., .., iset)), 0.5, 0.0);
+                scr.matmul_from(ao.i((.., .., t)), dm, 0.5, 0.0);
                 *&mut out.i_mut((.., 4, iset)) += rt::vecdot(&scr, ao.i((.., .., t)), 1);
             }
         }

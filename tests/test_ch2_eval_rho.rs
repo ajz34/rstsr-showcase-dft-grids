@@ -18,20 +18,21 @@ fn get_rho_from_dm() {
     // change coord Vec<f64> to Vec<[f64; 3]>
     let coords_array = coords.to_owned().into_pack_array::<3>(0).into_vec();
     let mut ni_obj = NIMatMul::new(&cint.cint, &coords_array, &weights.to_vec());
+    let dm_list = [dm.i((.., .., 0)), dm.i((.., .., 1))];
     // rho
-    let out_rho = ni_obj.make_rho_from_dm(dm.view(), NIDenType::RHO).unwrap();
+    let out_rho = ni_obj.make_rho_from_dm(&dm_list, NIDenType::RHO).unwrap();
     assert_eq!(out_rho.shape(), &[ngrids, 1, 2]);
     assert!((fp(out_rho.view()) - 90.1600267407401).abs() < 1e-6);
     // sigma
-    let out_sigma = ni_obj.make_rho_from_dm(dm.view(), NIDenType::SIGMA).unwrap();
+    let out_sigma = ni_obj.make_rho_from_dm(&dm_list, NIDenType::SIGMA).unwrap();
     assert_eq!(out_sigma.shape(), &[ngrids, 4, 2]);
     assert!((fp(out_sigma.view()) - 369.8178428546338).abs() < 1e-6);
     // tau
-    let out_tau = ni_obj.make_rho_from_dm(dm.view(), NIDenType::TAU).unwrap();
+    let out_tau = ni_obj.make_rho_from_dm(&dm_list, NIDenType::TAU).unwrap();
     assert_eq!(out_tau.shape(), &[ngrids, 5, 2]);
     assert!((fp(out_tau.view()) - 5587.859016487346).abs() < 1e-6);
     // lapl
-    let out_lapl = ni_obj.make_rho_from_dm(dm.view(), NIDenType::LAPL).unwrap();
+    let out_lapl = ni_obj.make_rho_from_dm(&dm_list, NIDenType::LAPL).unwrap();
     assert_eq!(out_lapl.shape(), &[ngrids, 6, 2]);
     assert!((fp(out_lapl.i((.., ..5, ..))) - 5587.859016487346).abs() < 1e-6);
     assert!((fp(out_lapl.i((.., 5, ..))) - -783527.5368333755).abs() < 1e-4);

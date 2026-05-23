@@ -35,31 +35,24 @@ impl<'a> NIMatMul<'a> {
         self.cache_tensor.get(&key).unwrap().view()
     }
 
-    pub fn make_rho_from_dm(&mut self, dm: TsrView, den_type: NIDenType) -> Result<Tsr, NIError> {
-        // This function assumes input dm is already symmetric.
-        // If not, the caller should manually symmetrize it before calling this function.
+    pub fn make_rho_from_dm(&mut self, dm_list: &[TsrView], den_type: NIDenType) -> Result<Tsr, NIError> {
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
         let ngrid = ao.shape()[0];
         let nao = ao.shape()[1];
-        ni_check_shape!(dm.ndim() >= 2, "Density matrix must be at least 2D")?;
-        ni_check_shape!(dm.shape()[0..2], [nao, nao], "Density matrix must be square and match AO dimension")?;
+        for dm in dm_list {
+            ni_check_shape!(dm.ndim(), 2, "Each density matrix must be 2D")?;
+            ni_check_shape!(dm.shape()[0], nao, "Density matrix first dimension must match AO dimension")?;
+            ni_check_shape!(dm.shape()[1], nao, "Density matrix must be square")?;
+        }
+        let nset = dm_list.len();
 
-        // reshape the density matrix to 3-dim [nao, nao, nset]
-        let shape_suffix = dm.shape()[2..].to_vec();
-        let nset = shape_suffix.iter().product();
-        let dm_reshaped = dm.reshape([nao, nao, nset]);
-
-        // compute the output
         let out_shape = [ngrid, den_type.num_rho_comp(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
         let mut buf = vec![0.0; ngrid * nao];
-        get_rho_from_dm_with_output(ao, dm_reshaped.view(), den_type, out.view_mut(), &mut buf)?;
-
-        // reshape output to match the original shape
-        let out_shape = [ngrid, den_type.num_rho_comp()].iter().chain(shape_suffix.iter()).cloned().collect_vec();
-        Ok(out.into_shape(out_shape))
+        get_rho_from_dm_with_output(ao, dm_list, den_type, out.view_mut(), &mut buf)?;
+        Ok(out)
     }
 
     pub fn make_rho_from_homogeneous_braket(
