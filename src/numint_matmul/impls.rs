@@ -1,6 +1,6 @@
 use super::prelude::*;
 
-impl NIMatMul {
+impl<'a> NIMatMul<'a> {
     pub fn new(cint: &CInt, coords: &[[f64; 3]], weights: &[f64]) -> Self {
         Self { cint: cint.clone(), coords: coords.to_vec(), weights: weights.to_vec(), cache_tensor: HashMap::new() }
     }
@@ -12,7 +12,7 @@ impl NIMatMul {
         rt::asarray((out, shape, &device))
     }
 
-    pub fn get_cached_ao<'a>(&'a mut self, deriv: usize) -> TsrView<'a> {
+    pub fn get_cached_ao(&mut self, deriv: usize) -> TsrView<'_> {
         assert!(
             deriv < AO_DERIV_DIM.len(),
             "Derivative order {deriv} is too high, max supported is {}",
@@ -31,7 +31,7 @@ impl NIMatMul {
 
         // otherwise, compute and cache all missing ao deriv up to the requested one
         let key = format!("ao_deriv{}", deriv);
-        self.cache_tensor.insert(key.clone(), self.prepare_ao(deriv));
+        self.cache_tensor.insert(key.clone(), self.prepare_ao(deriv).into_cow());
         self.cache_tensor.get(&key).unwrap().view()
     }
 
@@ -75,8 +75,6 @@ impl NIMatMul {
             ni_check_shape!(bra.ndim(), 2, "Each braket must be 2D")?;
             ni_check_shape!(bra.shape()[0], nao, "Bra's first dimension must match AO dimension")?;
         }
-
-        // reshape the bra to 3-dim [nao, nocc, nset]
         let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
         let nset = bra_list.len();
 

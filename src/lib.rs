@@ -24,4 +24,5 @@ pub mod prelude {
     pub(crate) type Tsr<T = f64> = Tensor<T, DeviceTsr, IxD>;
     pub(crate) type TsrView<'a, T = f64> = TensorView<'a, T, DeviceTsr, IxD>;
     pub(crate) type TsrMut<'a, T = f64> = TensorMut<'a, T, DeviceTsr, IxD>;
+    pub(crate) type TsrCow<'a, T = f64> = TensorCow<'a, T, DeviceTsr, IxD>;
 }
