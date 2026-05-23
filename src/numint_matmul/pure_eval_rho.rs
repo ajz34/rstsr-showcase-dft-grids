@@ -1,5 +1,20 @@
 use super::prelude::*;
 
+/// Evaluate density from density matrices.
+///
+/// # Important Notes
+///
+/// The input density matrices must be symmetric.
+/// You need to symmetrize them yourself. We will not check for symmetry.
+///
+/// # Parameters
+///
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `dm_list` : density matrices, each of shape `[nao, nao]`; one per set
+/// - `den_type` : which density components to compute
+/// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
+/// - `buf` : scratch buffer of length at least `ngrids * nao`
+#[doc = include_str!("docs/get_rho_from_dm_with_output.md")]
 pub fn get_rho_from_dm_with_output(
     ao: TsrView,
     dm_list: &[TsrView],
@@ -61,6 +76,18 @@ pub fn get_rho_from_dm_with_output(
     Ok(())
 }
 
+/// Evaluate density from orbital coefficients ("bra" vectors), where bra and ket are same, without
+/// forming the density matrix.
+///
+/// # Arguments
+///
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `bra_list` : orbital coefficient matrices, each of shape `[nao, nocc]`; one per set, the
+///   occupation number `nocc` is not required to be the same to the whole set
+/// - `den_type` : which density components to compute
+/// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
+/// - `buf` : scratch buffer of length at least `2 * ngrid * nocc_max`
+#[doc = include_str!("docs/get_rho_from_homogeneous_braket_with_output.md")]
 pub fn get_rho_from_homogeneous_braket_with_output(
     ao: TsrView,
     bra_list: &[TsrView],
