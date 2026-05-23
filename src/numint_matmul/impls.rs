@@ -79,6 +79,34 @@ impl<'a> NIMatMul<'a> {
         get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out.view_mut(), &mut buf)?;
         Ok(out)
     }
+
+    pub fn make_rho_from_one_bra_mult_ket(
+        &mut self,
+        bra: TsrView,
+        ket_list: &[TsrView],
+        den_type: NIDenType,
+    ) -> Result<Tsr, NIError> {
+        let ao = self.get_cached_ao(den_type.num_ao_deriv());
+
+        let ngrid = ao.shape()[0];
+        let nao = ao.shape()[1];
+        ni_check_shape!(bra.ndim(), 2, "Bra must be 2D")?;
+        ni_check_shape!(bra.shape()[0], nao, "Bra first dimension must match AO dimension")?;
+        let nocc = bra.shape()[1];
+        for ket in ket_list {
+            ni_check_shape!(ket.ndim(), 2, "Each ket must be 2D")?;
+            ni_check_shape!(ket.shape()[0], nao, "Ket first dimension must match AO dimension")?;
+            ni_check_shape!(ket.shape()[1], nocc, "Ket second dimension must match bra")?;
+        }
+        let nset = ket_list.len();
+
+        let out_shape = [ngrid, den_type.num_rho_comp(), nset];
+        let device = ao.device().clone();
+        let mut out = rt::zeros((out_shape.f(), &device));
+        let mut buf = vec![0.0; 3 * ngrid * nocc];
+        get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out.view_mut(), &mut buf)?;
+        Ok(out)
+    }
 }
 
 #[test]
