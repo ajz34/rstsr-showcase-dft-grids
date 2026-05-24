@@ -31,4 +31,12 @@ fn test_h2o_eval_xc_inner() {
         let arr = rt::asarray(&xc_output[r]);
         println!("{}:\n{:13.5e}", out_name, arr);
     }
+
+    use rstsr_showcase_dft_grids::xceff::xc_deriv::transform_xc_inner;
+    let ngrids = weights.shape()[0];
+    let xc_val_comps = xc_output.len() / ngrids;
+    let xc_val = rt::asarray((xc_output, [ngrids, xc_val_comps]));
+    let xc_eff = transform_xc_inner(rho_tau.view(), xc_val.view(), NIDenType::TAU, LibXCSpin::Unpolarized, 2);
+    println!("xc_eff shape: {:?}", xc_eff.shape());
+    println!("xc_eff:\n{:13.5e}", xc_eff.reverse_axes());
 }

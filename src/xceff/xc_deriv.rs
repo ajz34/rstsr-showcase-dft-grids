@@ -1,19 +1,23 @@
 use crate::prelude::*;
+use libxc::prelude::*;
+
+use LibXCSpin::*;
+use NIDenType::*;
 
 // https://stackoverflow.com/a/65563202/7740992
 pub fn count_combinations(n: usize, r: usize) -> usize {
     if r > n { 0 } else { (1..=r).fold(1, |acc, val| acc * (n - val + 1) / val) }
 }
 
-pub const fn get_gga_sort(key: (usize, usize)) -> Option<&'static [usize]> {
+pub const fn get_gga_sort(key: (LibXCSpin, usize)) -> Option<&'static [usize]> {
     match key {
-        (1, 1) => Some(&[0, 1, 2, 3, 4, 5]),
-        (1, 2) => Some(&[6, 7, 9, 10, 11, 8, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
-        (1, 3) => Some(&[
+        (Polarized, 1) => Some(&[0, 1, 2, 3, 4, 5]),
+        (Polarized, 2) => Some(&[6, 7, 9, 10, 11, 8, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+        (Polarized, 3) => Some(&[
             21, 22, 25, 26, 27, 23, 28, 29, 30, 34, 35, 36, 37, 38, 39, 24, 31, 32, 33, 40, 41, 42, 43, 44, 45, 46, 47,
             48, 49, 50, 51, 52, 53, 54, 55,
         ]),
-        (1, 4) => Some(&[
+        (Polarized, 4) => Some(&[
             56, 57, 61, 62, 63, 58, 64, 65, 66, 73, 74, 75, 76, 77, 78, 59, 67, 68, 69, 79, 80, 81, 82, 83, 84, 91, 92,
             93, 94, 95, 96, 97, 98, 99, 100, 60, 70, 71, 72, 85, 86, 87, 88, 89, 90, 101, 102, 103, 104, 105, 106, 107,
             108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125,
@@ -22,24 +26,24 @@ pub const fn get_gga_sort(key: (usize, usize)) -> Option<&'static [usize]> {
     }
 }
 
-pub const fn get_mgga_sort(key: (usize, usize)) -> Option<&'static [usize]> {
+pub const fn get_mgga_sort(key: (LibXCSpin, usize)) -> Option<&'static [usize]> {
     match key {
-        (0, 1) => Some(&[0, 1, 2, 3]),
-        (0, 2) => Some(&[4, 5, 7, 6, 8, 9]),
-        (0, 3) => Some(&[10, 11, 14, 12, 15, 16, 13, 17, 18, 19]),
-        (0, 4) => Some(&[20, 21, 25, 22, 26, 27, 23, 28, 29, 30, 24, 31, 32, 33, 34]),
-        (1, 1) => Some(&[0, 1, 2, 3, 4, 5, 6, 7]),
-        (1, 2) => Some(&[
+        (Unpolarized, 1) => Some(&[0, 1, 2, 3]),
+        (Unpolarized, 2) => Some(&[4, 5, 7, 6, 8, 9]),
+        (Unpolarized, 3) => Some(&[10, 11, 14, 12, 15, 16, 13, 17, 18, 19]),
+        (Unpolarized, 4) => Some(&[20, 21, 25, 22, 26, 27, 23, 28, 29, 30, 24, 31, 32, 33, 34]),
+        (Polarized, 1) => Some(&[0, 1, 2, 3, 4, 5, 6, 7]),
+        (Polarized, 2) => Some(&[
             8, 9, 11, 12, 13, 23, 24, 10, 14, 15, 16, 25, 26, 17, 18, 19, 27, 28, 20, 21, 29, 30, 22, 31, 32, 33, 34,
             35,
         ]),
-        (1, 3) => Some(&[
+        (Polarized, 3) => Some(&[
             36, 37, 40, 41, 42, 71, 72, 38, 43, 44, 45, 73, 74, 49, 50, 51, 77, 78, 52, 53, 79, 80, 54, 81, 82, 89, 90,
             91, 39, 46, 47, 48, 75, 76, 55, 56, 57, 83, 84, 58, 59, 85, 86, 60, 87, 88, 92, 93, 94, 61, 62, 63, 95, 96,
             64, 65, 97, 98, 66, 99, 100, 107, 108, 109, 67, 68, 101, 102, 69, 103, 104, 110, 111, 112, 70, 105, 106,
             113, 114, 115, 116, 117, 118, 119,
         ]),
-        (1, 4) => Some(&[
+        (Polarized, 4) => Some(&[
             120, 121, 125, 126, 127, 190, 191, 122, 128, 129, 130, 192, 193, 137, 138, 139, 198, 199, 140, 141, 200,
             201, 142, 202, 203, 216, 217, 218, 123, 131, 132, 133, 194, 195, 143, 144, 145, 204, 205, 146, 147, 206,
             207, 148, 208, 209, 219, 220, 221, 155, 156, 157, 225, 226, 158, 159, 227, 228, 160, 229, 230, 249, 250,
@@ -55,31 +59,31 @@ pub const fn get_mgga_sort(key: (usize, usize)) -> Option<&'static [usize]> {
     }
 }
 
-pub const fn get_xc_nvar_xlen(den_type: NIDenType, spin: usize) -> (usize, usize) {
+pub const fn get_xc_nvar_xlen(den_type: NIDenType, spin: LibXCSpin) -> (usize, usize) {
     match (den_type, spin) {
-        (NIDenType::RHO, 0) => (1, 1),
-        (NIDenType::RHO, _) => (1, 2),
-        (NIDenType::SIGMA, 0) => (4, 2),
-        (NIDenType::SIGMA, _) => (4, 5),
-        (NIDenType::TAU, 0) => (5, 3),
-        (NIDenType::TAU, _) => (5, 7),
-        (NIDenType::LAPL, _) => unimplemented!(),
+        (RHO, Unpolarized) => (1, 1),
+        (RHO, Polarized) => (1, 2),
+        (SIGMA, Unpolarized) => (4, 2),
+        (SIGMA, Polarized) => (4, 5),
+        (TAU, Unpolarized) => (5, 3),
+        (TAU, Polarized) => (5, 7),
+        (LAPL, _) => unimplemented!(),
     }
 }
 
-pub fn libxc_to_xcfun_indices(den_type: NIDenType, spin: usize, deriv: usize) -> Option<Vec<usize>> {
+pub fn libxc_to_xcfun_indices(den_type: NIDenType, spin: LibXCSpin, deriv: usize) -> Option<Vec<usize>> {
     if deriv <= 1 {
         return None;
     }
 
     match den_type {
-        NIDenType::RHO => None,
-        NIDenType::SIGMA => match spin {
-            0 => None,
-            _ => Some((1..=deriv).flat_map(|i| get_gga_sort((spin, i)).unwrap().to_vec()).collect()),
+        RHO => None,
+        SIGMA => match spin {
+            Unpolarized => None,
+            Polarized => Some((1..=deriv).flat_map(|i| get_gga_sort((spin, i)).unwrap().to_vec()).collect()),
         },
-        NIDenType::TAU => Some((1..=deriv).flat_map(|i| get_mgga_sort((spin, i)).unwrap().to_vec()).collect()),
-        NIDenType::LAPL => unimplemented!("LAPL not implemented"),
+        TAU => Some((1..=deriv).flat_map(|i| get_mgga_sort((spin, i)).unwrap().to_vec()).collect()),
+        LAPL => unimplemented!("LAPL not implemented"),
     }
 }
 
@@ -220,28 +224,28 @@ pub fn vxc_unfold_sigma_spin1(
 pub fn unfold_sigma(
     rho: TsrView,
     xc_val: TsrView,
-    spin: usize,
+    spin: LibXCSpin,
     order: usize,
     nvar: usize,
     xlen: usize,
     reserve: usize,
 ) -> Tsr {
     assert!(nvar >= 4);
-    let nvar_spin = if spin == 0 { nvar } else { 2 * nvar };
+    let nvar_spin = if spin == Unpolarized { nvar } else { 2 * nvar };
     let ngrids = rho.shape()[0];
     // check dimensions
     assert!(xc_val.shape()[0] == ngrids, "xc_val length mismatch");
     assert!(xc_val.ndim() == 2, "xc_val must be a 2D tensor");
     match spin {
-        0 => assert!(rho.shape() == &[ngrids, nvar]),
-        _ => assert!(rho.shape() == &[ngrids, nvar, 2]),
+        Unpolarized => assert!(rho.shape() == &[ngrids, nvar]),
+        Polarized => assert!(rho.shape() == &[ngrids, nvar, 2]),
     };
 
     let n_transform = order - reserve;
     let mut xc_tensor_shape = vec![ngrids];
     match spin {
-        0 => xc_tensor_shape.extend(vec![nvar; n_transform]),
-        _ => xc_tensor_shape.extend(vec![[nvar, 2]; n_transform].iter().flatten()),
+        Unpolarized => xc_tensor_shape.extend(vec![nvar; n_transform]),
+        Polarized => xc_tensor_shape.extend(vec![[nvar, 2]; n_transform].iter().flatten()),
     }
     xc_tensor_shape.extend(vec![xlen; reserve]);
     let mut xc_tensor: Tsr = unsafe { rt::empty((xc_tensor_shape, xc_val.device())) };
@@ -263,8 +267,8 @@ pub fn unfold_sigma(
         let ncounts = xlen.pow((order - 1 - i) as u32) * nvar_spin.pow(i as u32);
 
         match spin {
-            0 => vxc_unfold_sigma_spin0(xc_tensor.raw_mut(), buf.raw(), rho.raw(), ncounts, nvar, ngrids),
-            _ => vxc_unfold_sigma_spin1(xc_tensor.raw_mut(), buf.raw(), rho.raw(), ncounts, nvar, ngrids),
+            Unpolarized => vxc_unfold_sigma_spin0(xc_tensor.raw_mut(), buf.raw(), rho.raw(), ncounts, nvar, ngrids),
+            Polarized => vxc_unfold_sigma_spin1(xc_tensor.raw_mut(), buf.raw(), rho.raw(), ncounts, nvar, ngrids),
         }
     }
 
@@ -272,7 +276,7 @@ pub fn unfold_sigma(
 }
 
 #[allow(clippy::deref_addrof)]
-pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, spin: usize, order: usize) -> Tsr {
+pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, spin: LibXCSpin, order: usize) -> Tsr {
     assert!(order < 4, "currently only support order < 4 (exc, vxc, kxc, fxc)");
 
     // sanity check for dimensions
@@ -283,8 +287,8 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
     assert!(xc_val.ndim() == 2, "xc_val must be a 2D tensor");
     // change shape into [ngrids, nvar, nspin if exist], otherwise panic
     let rho = match spin {
-        0 => rho.into_shape([ngrids, nvar]),
-        _ => rho.into_shape([ngrids, nvar, 2]),
+        Unpolarized => rho.into_shape([ngrids, nvar]),
+        Polarized => rho.into_shape([ngrids, nvar, 2]),
     };
     assert!(rho.f_contig(), "rho must be f-contiguous");
     assert!(xc_val.f_contig(), "xc_val must be f-contiguous");
@@ -299,9 +303,9 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
     let (p0, p1) = (offsets[order], offsets[order + 1]);
 
     // quick return for LDA and HF
-    if den_type == NIDenType::RHO {
+    if den_type == RHO {
         let xc_out = xc_val.i((.., p0..p1));
-        if spin == 0 {
+        if spin == Unpolarized {
             // shape: [ngrids, 1, 1, ..., 1]
             //                 | [1]*order |
             let mut shape = vec![ngrids];
@@ -326,7 +330,7 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
         return xc_tensor;
     }
 
-    if spin == 0 {
+    if spin == Unpolarized {
         // currently we can only handle order = 2, 3 cases
         // for order > 3, following code is not correct
         let n_pairs = 1; // only correct for order = 2, 3
