@@ -1,6 +1,7 @@
 mod test_util;
 
 use libcint::prelude::*;
+use rstsr::prelude::*;
 use rstsr_showcase_dft_grids::prelude::*;
 use test_util::*;
 
@@ -39,8 +40,6 @@ fn get_rho_from_dm() {
 
 #[test]
 fn get_rho_from_homogeneous_braket() {
-    use rstsr::prelude::*;
-
     let mol_token = r#"
         atom = "O; H 1 0.94; H 1 0.94 2 104.5"
         basis = "def2-TZVP"

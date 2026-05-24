@@ -1,16 +1,20 @@
 #![allow(clippy::deref_addrof)]
+#![allow(clippy::manual_is_multiple_of)]
+
 pub mod error;
 pub mod flags;
 pub mod numint_matmul;
+pub mod xceff;
 
 pub mod prelude {
     #![allow(unused)]
 
     use super::*;
-    pub use crate::ni_check_shape;
+    pub use crate::{ni_check_shape, ni_error};
     pub use error::*;
     pub use flags::*;
     pub use numint_matmul::structs::*;
+    pub use xceff::libxc_wrap::*;
 
     pub(crate) use NIDenType::*;
 

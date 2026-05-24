@@ -1,13 +1,14 @@
 mod test_util;
 
 use libcint::prelude::*;
+use rstsr::prelude::*;
 use rstsr_showcase_dft_grids::prelude::*;
 use test_util::*;
 
 #[test]
 fn get_rho_from_dm() {
     let mol_token = r#"
-        atom = "C; H 1 0.94; H 1 0.94 2 104.5"
+        atom = "C; H 1 1.09; H 1 1.09 2 109.5"
         basis = "def2-TZVP"
     "#;
     let coords = read_npz("ch2.npz", "coords").into_reverse_axes();
@@ -40,8 +41,6 @@ fn get_rho_from_dm() {
 
 #[test]
 fn get_rho_from_homogeneous_braket() {
-    use rstsr::prelude::*;
-
     let mol_token = r#"
         atom = "C; H 1 0.94; H 1 0.94 2 104.5"
         basis = "def2-TZVP"
@@ -91,8 +90,6 @@ fn get_rho_from_homogeneous_braket() {
 
 #[test]
 fn get_rho_from_one_bra_mult_ket() {
-    use rstsr::prelude::*;
-
     let mol_token = r#"
         atom = "C; H 1 0.94; H 1 0.94 2 104.5"
         basis = "def2-TZVP"
@@ -147,8 +144,6 @@ fn get_rho_from_one_bra_mult_ket() {
 
 #[test]
 fn get_rho_from_mult_bra_mult_ket() {
-    use rstsr::prelude::*;
-
     let mol_token = r#"
         atom = "C; H 1 0.94; H 1 0.94 2 104.5"
         basis = "def2-TZVP"

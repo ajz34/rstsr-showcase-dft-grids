@@ -1,6 +1,7 @@
 #[derive(Debug, Clone)]
 pub enum NIError {
     ShapeMismatch { expected: Vec<usize>, actual: Vec<usize>, msg: String },
+    Message(String),
 }
 
 impl std::fmt::Display for NIError {
@@ -67,4 +68,15 @@ macro_rules! ni_check_shape {
             Ok(())
         }
     }};
+}
+
+#[macro_export]
+macro_rules! ni_error {
+    ($msg:expr) => {
+        NIError::Message($msg.to_string())
+    };
+
+    ($msg:expr, $($arg:tt)*) => {
+        NIError::Message(format!($msg, $($arg)*))
+    };
 }
