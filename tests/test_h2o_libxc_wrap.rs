@@ -2,6 +2,7 @@ mod test_util;
 
 use libcint::prelude::*;
 use libxc::prelude::*;
+use rstsr::prelude::*;
 use rstsr_showcase_dft_grids::prelude::*;
 use test_util::*;
 
@@ -20,7 +21,14 @@ fn test_h2o_eval_xc_inner() {
     let mut ni_obj = NIMatMul::new(&cint.cint, &coords_array, &weights.to_vec());
 
     let rho_tau = ni_obj.make_rho_from_dm(&[rdm1.view()], NIDenType::TAU).unwrap();
-    let xc_func = LibXCFunctional::from_identifier("mgga_x_tpss", LibXCSpin::Unpolarized);
+    let xc_func = LibXCFunctional::from_identifier("hyb_mgga_xc_tpssh", LibXCSpin::Unpolarized);
     let (xc_output, xc_layout) = libxc_eval_inner(&xc_func, rho_tau.i((.., .., 0)), 2).unwrap();
     println!("xc_output: {:?}, xc_layout: {:?}", xc_output.len(), xc_layout);
+    // first print libxc outputs
+    println!("xc_output: {:?}, xc_layout: {:?}", xc_output.len(), xc_layout);
+    for out_name in xc_layout.component_names() {
+        let r = xc_layout.get(out_name).unwrap();
+        let arr = rt::asarray(&xc_output[r]);
+        println!("{}:\n{:13.5e}", out_name, arr);
+    }
 }
