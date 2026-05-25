@@ -1,11 +1,12 @@
 mod test_util;
 
-use LibXCSpin::*;
-use NIDenType::*;
 use libcint::prelude::*;
 use libxc::prelude::*;
 use rstsr_showcase_dft_grids::prelude::*;
 use test_util::*;
+
+use LibXCSpin::*;
+use NIDenType::*;
 
 #[test]
 fn test_h2o_eval_xc_inner() {

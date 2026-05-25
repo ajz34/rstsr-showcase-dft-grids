@@ -47,7 +47,8 @@ pub fn get_rho_from_dm_with_output(
     for (iset, dm) in dm_list.iter().enumerate() {
         // rho part
         scr.matmul_from(ao.i((.., .., 0)), dm, 1.0, 0.0);
-        out.i_mut((.., 0, iset)).vecdot_from(&scr, ao.i((.., .., 0)), 1);
+        // out.i_mut((.., 0, iset)).vecdot_from(&scr, ao.i((.., .., 0)), 1);
+        out.i_mut((.., 0, iset)).assign(rt::vecdot(&scr, ao.i((.., .., 0)), 1));
         // sigma part
         if matches!(den_type, SIGMA | TAU | LAPL) {
             out.i_mut((.., 1..4, iset)).vecdot_from(&scr.i((.., .., None)), ao.i((.., .., 1..4)), 1);

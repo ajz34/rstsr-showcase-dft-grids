@@ -8,7 +8,7 @@ use test_util::*;
 #[test]
 fn get_rho_from_dm() {
     let mol_token = r#"
-        atom = "C; H 1 1.09; H 1 1.09 2 109.5"
+        atom = "C; H 1 0.94; H 1 0.94 2 104.5"
         basis = "def2-TZVP"
     "#;
     let coords = read_npz("ch2.npz", "coords").into_reverse_axes();

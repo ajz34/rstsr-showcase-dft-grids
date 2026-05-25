@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::xceff::xc_deriv::transform_xc_inner;
+use crate::xceff::xc_deriv::{transform_xc_inner, xc_indices_transform};
 use libxc::compute_cpu::LibXCCpuInput;
 use libxc::prelude::*;
 
@@ -79,16 +79,36 @@ pub fn libxc_eval_inner(
     }
 }
 
-pub fn libxc_eval_eff(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> Result<Vec<Tsr>, NIError> {
-    // TODO: currently this only handles unpolarized case.
-    if xc_func.spin() == Polarized {
-        return Err(ni_error!("Currently only unpolarized functionals are supported in libxc_eval_eff"));
+// transpose inplace, input slice is [m, n] in column-major
+fn transpose_inplace(slc: &mut [f64], m: usize, n: usize) {
+    // currently it is a naive implementation
+    assert!(slc.len() >= n * m);
+    let mut buffer = vec![0.0; n * m];
+    for j in 0..m {
+        for i in 0..n {
+            buffer[j * n + i] = slc[i * m + j];
+        }
     }
-    let den_type = determine_den_type(xc_func)?;
+    slc[..n * m].copy_from_slice(&buffer);
+}
 
-    let (xc_val, _xc_layout) = libxc_eval_inner(xc_func, rho.view(), deriv)?;
+pub fn libxc_eval_eff(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> Result<Vec<Tsr>, NIError> {
+    let den_type = determine_den_type(xc_func)?;
+    let (mut xc_val, xc_layout) = libxc_eval_inner(xc_func, rho.view(), deriv)?;
+    // inplace transpose the spin-related components
+    if xc_func.spin() == Polarized {
+        let ngrids = rho.shape()[0];
+        for name in xc_layout.component_names() {
+            let r = xc_layout.get(name).unwrap();
+            if r.end - r.start != ngrids {
+                let ncomp = (r.end - r.start) / ngrids;
+                transpose_inplace(&mut xc_val[r], ncomp, ngrids);
+            }
+        }
+    }
     let ngrids = rho.shape()[0];
     let xlen = xc_val.len() / ngrids;
     let xc_val = rt::asarray((xc_val, [ngrids, xlen].f()));
-    (0..deriv + 1).map(|order| transform_xc_inner(rho.view(), xc_val.view(), den_type, xc_func.spin(), order)).collect()
+    let xc_val = xc_indices_transform(xc_val.view(), den_type, xc_func.spin(), deriv);
+    (0..=deriv).map(|order| transform_xc_inner(rho.view(), xc_val.view(), den_type, xc_func.spin(), order)).collect()
 }

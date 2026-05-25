@@ -114,6 +114,13 @@ pub fn product_uniq_indices(nvars: usize, order: usize) -> Vec<usize> {
         .collect()
 }
 
+pub fn xc_indices_transform(xc0: TsrView<'_>, den_type: NIDenType, spin: LibXCSpin, deriv: usize) -> TsrCow<'_> {
+    // sanity check
+    assert!(xc0.ndim() == 2, "xc0 must be a 2D tensor");
+    let indices = libxc_to_xcfun_indices(den_type, spin, deriv);
+    if let Some(indices) = indices { xc0.index_select(-1, &indices).into_cow() } else { xc0.into_cow() }
+}
+
 pub fn vxc_unfold_sigma_spin0(
     frho: &mut [f64],
     fsigma: &[f64],
@@ -259,14 +266,17 @@ pub fn unfold_sigma(
             .copy_from_slice(&xc_val_offsetted[io * ngrids..(io + 1) * ngrids]);
     }
 
+    // also note the raw usage, rho is not assured to be offset-zero.
+    let rho_raw = &rho.raw()[rho.offset()..];
+
     let mut buf = unsafe { xc_tensor.empty_like() };
     for i in 0..n_transform {
         std::mem::swap(&mut xc_tensor, &mut buf);
         let ncounts = xlen.pow((order - 1 - i) as u32) * nvar_spin.pow(i as u32);
 
         match spin {
-            Unpolarized => vxc_unfold_sigma_spin0(xc_tensor.raw_mut(), buf.raw(), rho.raw(), ncounts, nvar, ngrids),
-            Polarized => vxc_unfold_sigma_spin1(xc_tensor.raw_mut(), buf.raw(), rho.raw(), ncounts, nvar, ngrids),
+            Unpolarized => vxc_unfold_sigma_spin0(xc_tensor.raw_mut(), buf.raw(), rho_raw, ncounts, nvar, ngrids),
+            Polarized => vxc_unfold_sigma_spin1(xc_tensor.raw_mut(), buf.raw(), rho_raw, ncounts, nvar, ngrids),
         }
     }
 
@@ -301,14 +311,16 @@ pub fn transform_xc_inner(
     };
     ni_check_shape!(rho.shape()[0], ngrids, "rho first dimension must be grids")?;
     ni_check_shape!(rho.shape()[1] >= nvar, "rho second dimension (variables) should be larger than {nvar}")?;
-    ni_check_shape!(rho.f_contig(), "rho must be f-contiguous")?;
-    ni_check_shape!(xc_val.f_contig(), "xc_val must be f-contiguous")?;
+    let rho = rho.change_contig(ColMajor);
+    let xc_val = xc_val.to_contig(ColMajor);
+    // double check input tensor
+    // since we are using some raw functionality to get the raw slice, the offset must be zero.
 
     // offsets of xc_val
     let mut offsets = vec![0];
     offsets.extend((0..=order).map(|o| count_combinations(xlen + o, o)));
     let offset_max = offsets.last().unwrap();
-    ni_check_shape!(xc_val.shape()[1] >= *offset_max, "xc_val length (offset) should be larger than {offset_max}")?;
+    ni_check_shape!(xc_val.shape()[1] >= *offset_max, "xc_val length should be larger than {offset_max}")?;
 
     // offsets match current order
     let (p0, p1) = (offsets[order], offsets[order + 1]);
