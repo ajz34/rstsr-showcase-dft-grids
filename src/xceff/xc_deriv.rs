@@ -27,11 +27,8 @@ pub const fn get_gga_sort(key: (LibXCSpin, usize)) -> Option<&'static [usize]> {
 }
 
 pub const fn get_mgga_sort(key: (LibXCSpin, usize)) -> Option<&'static [usize]> {
+    // TODO: fix pyscf/libxc convention conflict
     match key {
-        (Unpolarized, 1) => Some(&[0, 1, 2, 3]),
-        (Unpolarized, 2) => Some(&[4, 5, 7, 6, 8, 9]),
-        (Unpolarized, 3) => Some(&[10, 11, 14, 12, 15, 16, 13, 17, 18, 19]),
-        (Unpolarized, 4) => Some(&[20, 21, 25, 22, 26, 27, 23, 28, 29, 30, 24, 31, 32, 33, 34]),
         (Polarized, 1) => Some(&[0, 1, 2, 3, 4, 5, 6, 7]),
         (Polarized, 2) => Some(&[
             8, 9, 11, 12, 13, 23, 24, 10, 14, 15, 16, 25, 26, 17, 18, 19, 27, 28, 20, 21, 29, 30, 22, 31, 32, 33, 34,
@@ -82,7 +79,10 @@ pub fn libxc_to_xcfun_indices(den_type: NIDenType, spin: LibXCSpin, deriv: usize
             Unpolarized => None,
             Polarized => Some((1..=deriv).flat_map(|i| get_gga_sort((spin, i)).unwrap().to_vec()).collect()),
         },
-        TAU => Some((1..=deriv).flat_map(|i| get_mgga_sort((spin, i)).unwrap().to_vec()).collect()),
+        TAU => match spin {
+            Unpolarized => None,
+            Polarized => Some((1..=deriv).flat_map(|i| get_mgga_sort((spin, i)).unwrap().to_vec()).collect()),
+        },
         LAPL => unimplemented!("LAPL not implemented"),
     }
 }

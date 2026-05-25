@@ -56,4 +56,19 @@ fn test_ch2_eval_xc_inner() {
     assert!((fps[1] - -0.0688243866).abs() < 1e-6);
     assert!((fps[2] - -0.0998561381).abs() < 1e-6);
     assert!((fps[3] - 0.1192110757).abs() < 1e-6);
+
+    // tau (meta-GGA)
+    let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Polarized);
+    let xc_eff = libxc_eval_eff(&xc_func, rho_tau.view(), 3).unwrap();
+    let fps = [
+        fp((&xc_eff[0] * &weights).view()),
+        fp((&xc_eff[1] * &weights).view()),
+        fp((&xc_eff[2] * &weights * &rho_tau).view()),
+        fp((&xc_eff[3] * &weights * &rho_tau * &rho_tau.i((.., None, None, .., ..))).view()),
+    ];
+    println!("meta-GGA tau xc_eff fps: {:?}", fps);
+    assert!((fps[0] - 0.0070440179).abs() < 1e-6);
+    assert!((fps[1] - 0.0931735851).abs() < 1e-6);
+    assert!((fps[2] - -0.0147352726).abs() < 1e-6);
+    assert!((fps[3] - 1.3842052458).abs() < 1e-6);
 }
