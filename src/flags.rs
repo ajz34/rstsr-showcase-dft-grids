@@ -58,3 +58,26 @@ impl NIDenType {
         AO_DERIV_DIM[self.num_ao_deriv()]
     }
 }
+
+pub enum NIPar {
+    Par { chunk_size: Option<usize> },
+    Serial,
+}
+
+impl From<usize> for NIPar {
+    fn from(chunk_size: usize) -> Self {
+        NIPar::Par { chunk_size: Some(chunk_size) }
+    }
+}
+
+impl From<Option<usize>> for NIPar {
+    fn from(chunk_size: Option<usize>) -> Self {
+        NIPar::Par { chunk_size }
+    }
+}
+
+impl From<bool> for NIPar {
+    fn from(parallel: bool) -> Self {
+        if parallel { NIPar::Par { chunk_size: None } } else { NIPar::Serial }
+    }
+}

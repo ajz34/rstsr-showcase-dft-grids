@@ -6,6 +6,7 @@ use libxc::prelude::*;
 use LibXCSpin::*;
 use NIDenType::*;
 
+/// Determine the density type required by the given XC functional.
 pub fn determine_den_type(xc_func: &LibXCFunctional) -> Result<NIDenType, NIError> {
     match xc_func.family() {
         LibXCFamily::LDA | LibXCFamily::HybLDA => Ok(RHO),
@@ -21,6 +22,7 @@ pub fn determine_den_type(xc_func: &LibXCFunctional) -> Result<NIDenType, NIErro
     }
 }
 
+/// Evaluate the XC energy/potential, to LibXC raw output.
 pub fn libxc_eval_inner(
     xc_func: &LibXCFunctional,
     rho: TsrView,
@@ -79,31 +81,36 @@ pub fn libxc_eval_inner(
     }
 }
 
-// transpose inplace, input slice is [m, n] in column-major.
-// current implementation is naive and not cache-friendly; inplace-transpose is difficult task.
-fn transpose_inplace(slc: &mut [f64], m: usize, n: usize) {
+/// Transpose matrix with buffer.
+///
+/// This will perform inplace, but algorithm is naive. Should be able to optimize but that's too
+/// hard for me.
+fn transpose_with_buffer(slc: &mut [f64], m: usize, n: usize, buf: &mut [f64]) {
     // currently it is a naive implementation
     assert!(slc.len() >= n * m);
-    let mut buffer = vec![0.0; n * m];
+    assert!(buf.len() >= n * m);
     for j in 0..m {
         for i in 0..n {
-            buffer[j * n + i] = slc[i * m + j];
+            buf[j * n + i] = slc[i * m + j];
         }
     }
-    slc[..n * m].copy_from_slice(&buffer);
+    slc[..n * m].copy_from_slice(&buf[..n * m]);
 }
 
+/// Evaluate effective XC potential from LibXC functional and density, in serial.
 pub fn libxc_eval_eff_serial(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> Result<Vec<Tsr>, NIError> {
     let den_type = determine_den_type(xc_func)?;
     let (mut xc_val, xc_layout) = libxc_eval_inner(xc_func, rho.view(), deriv)?;
-    // inplace transpose the spin-related components
+    // transpose the spin-related components
+    // first find the largest intermediate size
+    let ngrids = rho.shape()[0];
+    let buf_size = xc_layout.iter_to_range().map(|(_, r)| r.end - r.start).max().unwrap_or(ngrids);
+    let mut buf = vec![0.0; buf_size];
     if xc_func.spin() == Polarized {
-        let ngrids = rho.shape()[0];
-        for name in xc_layout.component_names() {
-            let r = xc_layout.get(name).unwrap();
+        for (_, r) in xc_layout.iter_to_range() {
             if r.end - r.start != ngrids {
                 let ncomp = (r.end - r.start) / ngrids;
-                transpose_inplace(&mut xc_val[r], ncomp, ngrids);
+                transpose_with_buffer(&mut xc_val[r], ncomp, ngrids, &mut buf);
             }
         }
     }
@@ -114,6 +121,7 @@ pub fn libxc_eval_eff_serial(xc_func: &LibXCFunctional, rho: TsrView, deriv: usi
     (0..=deriv).map(|order| transform_xc_inner(rho.view(), xc_val.view(), den_type, xc_func.spin(), order)).collect()
 }
 
+/// Evaluate effective XC potential from LibXC functional and density, in parallel.
 pub fn libxc_eval_eff_parallel(
     xc_func: &LibXCFunctional,
     rho: TsrView,
@@ -177,4 +185,19 @@ pub fn libxc_eval_eff_parallel(
     });
 
     Ok(xc_eff)
+}
+
+/// Evaluate effective XC potential from LibXC functional and density, with parallel option.
+#[doc = include_str!("libxc-eval-eff.md")]
+pub fn libxc_eval_eff(
+    xc_func: &LibXCFunctional,
+    rho: TsrView,
+    deriv: usize,
+    par: impl Into<NIPar>,
+) -> Result<Vec<Tsr>, NIError> {
+    let par = par.into();
+    match par {
+        NIPar::Par { chunk_size } => libxc_eval_eff_parallel(xc_func, rho, deriv, chunk_size),
+        NIPar::Serial => libxc_eval_eff_serial(xc_func, rho, deriv),
+    }
 }
