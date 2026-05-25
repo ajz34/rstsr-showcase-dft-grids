@@ -1,6 +1,6 @@
 #[derive(Debug, Clone)]
 pub enum NIError {
-    ShapeMismatch { expected: Vec<usize>, actual: Vec<usize>, msg: String },
+    ShapeMismatch { actual: Vec<usize>, expected: Vec<usize>, msg: String },
     Message(String),
 }
 
@@ -42,14 +42,14 @@ impl NIIntoUsizeVec for Vec<usize> {
 
 #[macro_export]
 macro_rules! ni_check_shape {
-    ($expected:expr, $actual:expr, $msg:expr) => {{
-        if $expected.into_usize_vec() != $actual.into_usize_vec() {
-            let str_expected = stringify!($expected);
+    ($actual:expr, $expected:expr, $msg:expr) => {{
+        if $actual.into_usize_vec() != $expected.into_usize_vec() {
             let str_actual = stringify!($actual);
+            let str_expected = stringify!($expected);
             Err(NIError::ShapeMismatch {
-                expected: $expected.into_usize_vec(),
                 actual: $actual.into_usize_vec(),
-                msg: $msg.to_string() + &format!(" (expected: {str_expected}, actual: {str_actual})"),
+                expected: $expected.into_usize_vec(),
+                msg: format!($msg) + &format!(" (expected: {str_expected}, actual: {str_actual})"),
             })
         } else {
             Ok(())
@@ -60,9 +60,9 @@ macro_rules! ni_check_shape {
         if !$cond {
             let str_cond = stringify!($cond);
             Err(NIError::ShapeMismatch {
-                expected: vec![],
                 actual: vec![],
-                msg: $msg.to_string() + &format!(" (condition: {str_cond})"),
+                expected: vec![],
+                msg: format!($msg) + &format!(" (condition: {str_cond})"),
             })
         } else {
             Ok(())
@@ -73,7 +73,7 @@ macro_rules! ni_check_shape {
 #[macro_export]
 macro_rules! ni_error {
     ($msg:expr) => {
-        NIError::Message($msg.to_string())
+        NIError::Message(format!($msg))
     };
 
     ($msg:expr, $($arg:tt)*) => {

@@ -1,6 +1,25 @@
-use libxc::{compute_cpu::LibXCCpuInput, prelude::*};
-
 use crate::prelude::*;
+use crate::xceff::xc_deriv::transform_xc_inner;
+use libxc::compute_cpu::LibXCCpuInput;
+use libxc::prelude::*;
+
+use LibXCSpin::*;
+use NIDenType::*;
+
+pub fn determine_den_type(xc_func: &LibXCFunctional) -> Result<NIDenType, NIError> {
+    match xc_func.family() {
+        LibXCFamily::LDA | LibXCFamily::HybLDA => Ok(RHO),
+        LibXCFamily::GGA | LibXCFamily::HybGGA => Ok(SIGMA),
+        LibXCFamily::MGGA | LibXCFamily::HybMGGA => {
+            if xc_func.needs_laplacian() {
+                Ok(LAPL)
+            } else {
+                Ok(TAU)
+            }
+        },
+        _ => Err(ni_error!("Unsupported functional family: {:?}", xc_func.family())),
+    }
+}
 
 pub fn libxc_eval_inner(
     xc_func: &LibXCFunctional,
@@ -9,49 +28,24 @@ pub fn libxc_eval_inner(
 ) -> Result<(Vec<f64>, LibXCOutputLayout), NIError> {
     // sanity check
     // rho must be either [ngrids, 1/4/5/6] or [ngrids, 1/4/5/6, 2]
-    let spin_polarize = match rho.ndim() {
-        2 => LibXCSpin::Unpolarized,
-        3 => {
-            if rho.shape()[2] != 2 {
-                return Err(ni_error!(
-                    "rho for spin polarized functionals must have shape [ngrids, 1/4/5/6, 2], got shape {:?}",
-                    rho.shape()
-                ));
-            }
-            LibXCSpin::Polarized
+    match xc_func.spin() {
+        Unpolarized => ni_check_shape!(rho.ndim(), 2, "rho for unpolarized functionals must be a 2D tensor")?,
+        Polarized => {
+            ni_check_shape!(rho.ndim(), 3, "rho for polarized functionals must be a 3D tensor")?;
+            ni_check_shape!(rho.shape()[2], 2, "rho for polarized functionals must have last dimension of size 2")?;
         },
-        _ => {
-            return Err(ni_error!(
-                "rho must be either [ngrids, 1/4/5/6] or [ngrids, 1/4/5/6, 2], got shape {:?}",
-                rho.shape()
-            ));
-        },
-    };
+    }
     // we do not support laplacian currently
     if xc_func.needs_laplacian() {
         return Err(ni_error!("Laplacian-dependent functionals are not supported yet"));
     }
-    let den_type = match xc_func.family() {
-        LibXCFamily::LDA | LibXCFamily::HybLDA => {
-            ni_check_shape!(rho.shape()[1] >= 1, "LDA functionals require at least rho component")?;
-            NIDenType::RHO
-        },
-        LibXCFamily::GGA | LibXCFamily::HybGGA => {
-            ni_check_shape!(rho.shape()[1] >= 4, "GGA functionals require at least rho and sigma components")?;
-            NIDenType::SIGMA
-        },
-        LibXCFamily::MGGA | LibXCFamily::HybMGGA => {
-            // TODO: if we will support laplacian in future, the following match should modify
-            ni_check_shape!(rho.shape()[1] >= 5, "MGGA functionals require at least rho, sigma and tau components")?;
-            NIDenType::TAU
-        },
-        _ => return Err(ni_error!("Unsupported functional family: {:?}", xc_func.family())),
-    };
+    let den_type = determine_den_type(xc_func)?;
+    ni_check_shape!(rho.shape()[1] >= den_type.num_rho_comp(), "Input density does not have enough components")?;
     let do_rho = matches!(den_type, RHO | SIGMA | TAU | LAPL);
     let do_sigma = matches!(den_type, SIGMA | TAU | LAPL);
     let do_tau = matches!(den_type, TAU | LAPL);
 
-    if spin_polarize == LibXCSpin::Unpolarized {
+    if xc_func.spin() == Unpolarized {
         // build up owned components
         let xc_rho = do_rho.then(|| rho.i((.., 0)).to_vec());
         let xc_sigma = do_sigma.then(|| rt::vecdot(rho.i((.., 1..4)), rho.i((.., 1..4)), 1).into_vec());
@@ -61,7 +55,7 @@ pub fn libxc_eval_inner(
         for (key, value) in [("rho", xc_rho.as_ref()), ("sigma", xc_sigma.as_ref()), ("tau", xc_tau.as_ref())] {
             value.map(|v| xc_input.insert(key.to_string(), v.as_slice()));
         }
-        xc_func.compute_xc(&xc_input, deriv).map_err(|e| ni_error!("LibXC compute_xc failed: {}", e))
+        xc_func.compute_xc(&xc_input, deriv).map_err(|e| ni_error!("LibXC compute_xc failed: {e}"))
     } else {
         // build up owned components
         // note libxc's convention is [2, ngrids] for rho, not [ngrids, 2].
@@ -81,6 +75,20 @@ pub fn libxc_eval_inner(
         for (key, value) in [("rho", xc_rho.as_ref()), ("sigma", xc_sigma.as_ref()), ("tau", xc_tau.as_ref())] {
             value.map(|v| xc_input.insert(key.to_string(), v.as_slice()));
         }
-        xc_func.compute_xc(&xc_input, deriv).map_err(|e| ni_error!("LibXC compute_xc failed: {}", e))
+        xc_func.compute_xc(&xc_input, deriv).map_err(|e| ni_error!("LibXC compute_xc failed: {e}"))
     }
+}
+
+pub fn libxc_eval_eff(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> Result<Vec<Tsr>, NIError> {
+    // TODO: currently this only handles unpolarized case.
+    if xc_func.spin() == Polarized {
+        return Err(ni_error!("Currently only unpolarized functionals are supported in libxc_eval_eff"));
+    }
+    let den_type = determine_den_type(xc_func)?;
+
+    let (xc_val, _xc_layout) = libxc_eval_inner(xc_func, rho.view(), deriv)?;
+    let ngrids = rho.shape()[0];
+    let xlen = xc_val.len() / ngrids;
+    let xc_val = rt::asarray((xc_val, [ngrids, xlen].f()));
+    (0..deriv + 1).map(|order| transform_xc_inner(rho.view(), xc_val.view(), den_type, xc_func.spin(), order)).collect()
 }

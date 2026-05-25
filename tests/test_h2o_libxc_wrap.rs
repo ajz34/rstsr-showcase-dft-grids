@@ -1,8 +1,9 @@
 mod test_util;
 
+use LibXCSpin::*;
+use NIDenType::*;
 use libcint::prelude::*;
 use libxc::prelude::*;
-use rstsr::prelude::*;
 use rstsr_showcase_dft_grids::prelude::*;
 use test_util::*;
 
@@ -20,23 +21,53 @@ fn test_h2o_eval_xc_inner() {
     let coords_array = coords.to_owned().into_pack_array::<3>(0).into_vec();
     let mut ni_obj = NIMatMul::new(&cint.cint, &coords_array, &weights.to_vec());
 
-    let rho_tau = ni_obj.make_rho_from_dm(&[rdm1.view()], NIDenType::TAU).unwrap();
-    let xc_func = LibXCFunctional::from_identifier("hyb_mgga_xc_tpssh", LibXCSpin::Unpolarized);
-    let (xc_output, xc_layout) = libxc_eval_inner(&xc_func, rho_tau.i((.., .., 0)), 2).unwrap();
-    println!("xc_output: {:?}, xc_layout: {:?}", xc_output.len(), xc_layout);
-    // first print libxc outputs
-    println!("xc_output: {:?}, xc_layout: {:?}", xc_output.len(), xc_layout);
-    for out_name in xc_layout.component_names() {
-        let r = xc_layout.get(out_name).unwrap();
-        let arr = rt::asarray(&xc_output[r]);
-        println!("{}:\n{:13.5e}", out_name, arr);
-    }
+    // this density can be utilized by rho/sigma/tau.
+    let rho_tau = ni_obj.make_rho_from_dm(&[rdm1.view()], TAU).unwrap().into_squeeze(-1);
 
-    use rstsr_showcase_dft_grids::xceff::xc_deriv::transform_xc_inner;
-    let ngrids = weights.shape()[0];
-    let xc_val_comps = xc_output.len() / ngrids;
-    let xc_val = rt::asarray((xc_output, [ngrids, xc_val_comps]));
-    let xc_eff = transform_xc_inner(rho_tau.view(), xc_val.view(), NIDenType::TAU, LibXCSpin::Unpolarized, 2);
-    println!("xc_eff shape: {:?}", xc_eff.shape());
-    println!("xc_eff:\n{:13.5e}", xc_eff.reverse_axes());
+    // rho (lda)
+    let xc_func = LibXCFunctional::from_identifier("lda_x", Unpolarized);
+    let rho_rho = rho_tau.i((.., ..1));
+    let xc_eff = libxc_eval_eff(&xc_func, rho_rho.view(), 3).unwrap();
+    let fps = [
+        fp((&xc_eff[0] * &weights).view()),
+        fp((&xc_eff[1] * &weights).view()),
+        fp((&xc_eff[2] * &weights * &rho_rho).view()),
+        fp((&xc_eff[3] * &weights * &rho_rho * &rho_rho.i((.., None, ..))).view()),
+    ];
+    println!("LDA xc_eff fps: {:?}", fps);
+    assert!((fps[0] - -0.0653646142).abs() < 1e-6);
+    assert!((fps[1] - -0.0871528189).abs() < 1e-6);
+    assert!((fps[2] - -0.0290509396).abs() < 1e-6);
+    assert!((fps[3] - 0.0193672931).abs() < 1e-6);
+
+    // sigma (gga)
+    let xc_func = LibXCFunctional::from_identifier("gga_x_pbe", Unpolarized);
+    let rho_sigma = rho_tau.i((.., ..4));
+    let xc_eff = libxc_eval_eff(&xc_func, rho_sigma.view(), 3).unwrap();
+    let fps = [
+        fp((&xc_eff[0] * &weights).view()),
+        fp((&xc_eff[1] * &weights).view()),
+        fp((&xc_eff[2] * &weights * &rho_sigma).view()),
+        fp((&xc_eff[3] * &weights * &rho_sigma * &rho_sigma.i((.., None, ..))).view()),
+    ];
+    println!("GGA xc_eff fps: {:?}", fps);
+    assert!((fps[0] - -0.1652985961).abs() < 1e-6);
+    assert!((fps[1] - -0.2296325511).abs() < 1e-6);
+    assert!((fps[2] - -0.1386410873).abs() < 1e-6);
+    assert!((fps[3] - -0.523551635).abs() < 1e-6);
+
+    // tau (meta-GGA tau)
+    let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
+    let xc_eff = libxc_eval_eff(&xc_func, rho_tau.view(), 3).unwrap();
+    let fps = [
+        fp((&xc_eff[0] * &weights).view()),
+        fp((&xc_eff[1] * &weights).view()),
+        fp((&xc_eff[2] * &weights * &rho_tau).view()),
+        fp((&xc_eff[3] * &weights * &rho_tau * &rho_tau.i((.., None, ..))).view()),
+    ];
+    println!("meta-GGA tau xc_eff fps: {:?}", fps);
+    assert!((fps[0] - -0.1378400498).abs() < 1e-6);
+    assert!((fps[1] - -0.1893572125).abs() < 1e-6);
+    assert!((fps[2] - -0.1183454954).abs() < 1e-6);
+    assert!((fps[3] - -1.0447740367).abs() < 1e-6);
 }

@@ -126,12 +126,14 @@ pub fn vxc_unfold_sigma_spin0(
     let nvg = nvar * ngrids;
 
     // Define accessor macros matching the C version's pattern
-    macro_rules! frho_at {
+    macro_rules! fr_at {
+        // f_rho index
         ($g:expr, $x:expr, $n:expr) => {
             frho[$g + $x * ngrids + $n * nvg]
         };
     }
-    macro_rules! fsigma_at {
+    macro_rules! fs_at {
+        // f_rho index
         ($g:expr, $n:expr, $x:expr) => {
             fsigma[$g + $n * ngrids + $x * ncg]
         };
@@ -145,10 +147,10 @@ pub fn vxc_unfold_sigma_spin0(
     for n in 0..ncounts {
         for g in 0..ngrids {
             // Main computation block
-            frho_at!(g, 0, n) = fsigma_at!(g, n, 0);
-            frho_at!(g, 1, n) = fsigma_at!(g, n, 1) * rho_at!(g, 1) * 2.0;
-            frho_at!(g, 2, n) = fsigma_at!(g, n, 1) * rho_at!(g, 2) * 2.0;
-            frho_at!(g, 3, n) = fsigma_at!(g, n, 1) * rho_at!(g, 3) * 2.0;
+            fr_at!(g, 0, n) = fs_at!(g, n, 0);
+            fr_at!(g, 1, n) = fs_at!(g, n, 1) * rho_at!(g, 1) * 2.0;
+            fr_at!(g, 2, n) = fs_at!(g, n, 1) * rho_at!(g, 2) * 2.0;
+            fr_at!(g, 3, n) = fs_at!(g, n, 1) * rho_at!(g, 3) * 2.0;
         }
     }
 
@@ -156,7 +158,7 @@ pub fn vxc_unfold_sigma_spin0(
         assert_eq!(nvar, 5, "MGGA case requires exactly 5 variables");
         for n in 0..ncounts {
             for g in 0..ngrids {
-                frho_at!(g, 4, n) = fsigma_at!(g, n, 2);
+                fr_at!(g, 4, n) = fs_at!(g, n, 2);
             }
         }
     }
@@ -174,12 +176,14 @@ pub fn vxc_unfold_sigma_spin1(
     let nvg = nvar * ngrids;
 
     // Helper macros to access the arrays by indices
-    macro_rules! frho_at {
+    macro_rules! fr_at {
+        // f_rho index
         ($g:expr, $x:expr, $a:expr, $n:expr) => {
             frho[$g + $x * ngrids + ($a + $n * 2) * nvg]
         };
     }
-    macro_rules! fsigma_at {
+    macro_rules! fs_at {
+        // f_sigma index
         ($g:expr, $n:expr, $x:expr) => {
             fsigma[$g + $n * ngrids + $x * ncg]
         };
@@ -193,20 +197,14 @@ pub fn vxc_unfold_sigma_spin1(
     for n in 0..ncounts {
         for g in 0..ngrids {
             // Main computation block
-            frho_at!(g, 0, 0, n) = fsigma_at!(g, n, 0);
-            frho_at!(g, 0, 1, n) = fsigma_at!(g, n, 1);
-            frho_at!(g, 1, 0, n) =
-                fsigma_at!(g, n, 2) * rho_at!(g, 1, 0) * 2.0 + fsigma_at!(g, n, 3) * rho_at!(g, 1, 1);
-            frho_at!(g, 1, 1, n) =
-                fsigma_at!(g, n, 3) * rho_at!(g, 1, 0) + 2.0 * fsigma_at!(g, n, 4) * rho_at!(g, 1, 1);
-            frho_at!(g, 2, 0, n) =
-                fsigma_at!(g, n, 2) * rho_at!(g, 2, 0) * 2.0 + fsigma_at!(g, n, 3) * rho_at!(g, 2, 1);
-            frho_at!(g, 2, 1, n) =
-                fsigma_at!(g, n, 3) * rho_at!(g, 2, 0) + 2.0 * fsigma_at!(g, n, 4) * rho_at!(g, 2, 1);
-            frho_at!(g, 3, 0, n) =
-                fsigma_at!(g, n, 2) * rho_at!(g, 3, 0) * 2.0 + fsigma_at!(g, n, 3) * rho_at!(g, 3, 1);
-            frho_at!(g, 3, 1, n) =
-                fsigma_at!(g, n, 3) * rho_at!(g, 3, 0) + 2.0 * fsigma_at!(g, n, 4) * rho_at!(g, 3, 1);
+            fr_at!(g, 0, 0, n) = fs_at!(g, n, 0);
+            fr_at!(g, 0, 1, n) = fs_at!(g, n, 1);
+            fr_at!(g, 1, 0, n) = fs_at!(g, n, 2) * rho_at!(g, 1, 0) * 2.0 + fs_at!(g, n, 3) * rho_at!(g, 1, 1);
+            fr_at!(g, 1, 1, n) = fs_at!(g, n, 3) * rho_at!(g, 1, 0) + 2.0 * fs_at!(g, n, 4) * rho_at!(g, 1, 1);
+            fr_at!(g, 2, 0, n) = fs_at!(g, n, 2) * rho_at!(g, 2, 0) * 2.0 + fs_at!(g, n, 3) * rho_at!(g, 2, 1);
+            fr_at!(g, 2, 1, n) = fs_at!(g, n, 3) * rho_at!(g, 2, 0) + 2.0 * fs_at!(g, n, 4) * rho_at!(g, 2, 1);
+            fr_at!(g, 3, 0, n) = fs_at!(g, n, 2) * rho_at!(g, 3, 0) * 2.0 + fs_at!(g, n, 3) * rho_at!(g, 3, 1);
+            fr_at!(g, 3, 1, n) = fs_at!(g, n, 3) * rho_at!(g, 3, 0) + 2.0 * fs_at!(g, n, 4) * rho_at!(g, 3, 1);
         }
     }
 
@@ -214,8 +212,8 @@ pub fn vxc_unfold_sigma_spin1(
         assert_eq!(nvar, 5, "MGGA case requires exactly 5 variables");
         for n in 0..ncounts {
             for g in 0..ngrids {
-                frho_at!(g, 4, 0, n) = fsigma_at!(g, n, 5);
-                frho_at!(g, 4, 1, n) = fsigma_at!(g, n, 6);
+                fr_at!(g, 4, 0, n) = fs_at!(g, n, 5);
+                fr_at!(g, 4, 1, n) = fs_at!(g, n, 6);
             }
         }
     }
@@ -276,33 +274,46 @@ pub fn unfold_sigma(
 }
 
 #[allow(clippy::deref_addrof)]
-pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, spin: LibXCSpin, order: usize) -> Tsr {
-    assert!(order < 4, "currently only support order < 4 (exc, vxc, kxc, fxc)");
+pub fn transform_xc_inner(
+    rho: TsrView,
+    xc_val: TsrView,
+    den_type: NIDenType,
+    spin: LibXCSpin,
+    order: usize,
+) -> Result<Tsr, NIError> {
+    if order >= 4 {
+        return Err(ni_error!("currently only support order < 4 (exc, vxc, kxc, fxc). You specified order {order}"));
+    }
 
     // sanity check for dimensions
     let ngrids = rho.shape()[0];
     let (nvar, xlen) = get_xc_nvar_xlen(den_type, spin);
     // check dimensions
-    assert!(xc_val.shape()[0] == ngrids, "xc_val length (grids) mismatch");
-    assert!(xc_val.ndim() == 2, "xc_val must be a 2D tensor");
-    // change shape into [ngrids, nvar, nspin if exist], otherwise panic
-    let rho = match spin {
-        Unpolarized => rho.into_shape([ngrids, nvar]),
-        Polarized => rho.into_shape([ngrids, nvar, 2]),
+    ni_check_shape!(xc_val.shape()[0], ngrids, "xc_val length (grids) mismatch")?;
+    ni_check_shape!(xc_val.ndim(), 2, "xc_val must be a 2D tensor")?;
+    // check shape [ngrids, nvar, nspin if exist], otherwise panic
+    match spin {
+        Unpolarized => ni_check_shape!(rho.ndim(), 2, "rho must be a 2D tensor")?,
+        Polarized => {
+            ni_check_shape!(rho.ndim(), 3, "rho must be a 3D tensor")?;
+            ni_check_shape!(rho.shape()[2], 2, "rho last dimension should be 2 for polarized case")?;
+        },
     };
-    assert!(rho.f_contig(), "rho must be f-contiguous");
-    assert!(xc_val.f_contig(), "xc_val must be f-contiguous");
+    ni_check_shape!(rho.shape()[0], ngrids, "rho first dimension must be grids")?;
+    ni_check_shape!(rho.shape()[1] >= nvar, "rho second dimension (variables) should be larger than {nvar}")?;
+    ni_check_shape!(rho.f_contig(), "rho must be f-contiguous")?;
+    ni_check_shape!(xc_val.f_contig(), "xc_val must be f-contiguous")?;
 
     // offsets of xc_val
     let mut offsets = vec![0];
     offsets.extend((0..=order).map(|o| count_combinations(xlen + o, o)));
     let offset_max = offsets.last().unwrap();
-    assert!(xc_val.shape()[1] >= *offset_max, "xc_val length (offset) mismatch");
+    ni_check_shape!(xc_val.shape()[1] >= *offset_max, "xc_val length (offset) should be larger than {offset_max}")?;
 
     // offsets match current order
     let (p0, p1) = (offsets[order], offsets[order + 1]);
 
-    // quick return for LDA and HF
+    // quick return for LDA
     if den_type == RHO {
         let xc_out = xc_val.i((.., p0..p1));
         if spin == Unpolarized {
@@ -310,7 +321,7 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
             //                 | [1]*order |
             let mut shape = vec![ngrids];
             shape.extend(vec![1; order]);
-            return xc_out.into_shape(shape);
+            return Ok(xc_out.into_shape(shape));
         } else {
             let indices = product_uniq_indices(xlen, order);
             let xc_out = xc_out.index_select(-1, &indices);
@@ -318,7 +329,7 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
             //                 | [1, 2] * order    |
             let mut shape = vec![ngrids];
             shape.extend(vec![[1, 2]; order].into_iter().flatten());
-            return xc_out.into_shape(shape);
+            return Ok(xc_out.into_shape(shape));
         }
     }
 
@@ -327,7 +338,7 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
     if order <= 1 {
         // quick return for 0/1-order derivatives, which does not involve pair
         // derivatives of sigma
-        return xc_tensor;
+        return Ok(xc_tensor);
     }
 
     if spin == Unpolarized {
@@ -338,12 +349,12 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
         let xc_sub = unfold_sigma(rho.view(), xc_val.i((.., p0..p1)), spin, order - n_pairs, nvar, xlen, n_pairs);
         let xc_sub: Tsr = 2.0 * xc_sub.i((Ellipsis, 1));
         match order {
-            2 => *&mut xc_tensor.i_mut((.., 1..4, 1..4)).diagonal_mut((0_isize, -1, -2)) += xc_sub,
+            2 => *&mut xc_tensor.i_mut((.., 1..4, 1..4)).diagonal_mut((0, -1, -2)) += xc_sub,
             3 => {
                 let permute_order_list = [[0, 1, 2, 3], [0, 2, 3, 1], [0, 3, 1, 2]];
                 for permute_order in permute_order_list {
                     let mut xc_tensor_perm = xc_tensor.view_mut().into_transpose(&permute_order);
-                    *&mut xc_tensor_perm.i_mut((Ellipsis, 1..4, 1..4)).diagonal_mut((0_isize, -1, -2)) += &xc_sub;
+                    *&mut xc_tensor_perm.i_mut((Ellipsis, 1..4, 1..4)).diagonal_mut((0, -1, -2)) += &xc_sub;
                 }
             },
             _ => unreachable!(),
@@ -371,7 +382,7 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
                 let permute_spin = [0, 2, 4, 1, 3];
                 let mut xc_tensor_spin = xc_tensor.view_mut().into_transpose(&permute_spin);
                 // the case of order=2 does not require xc_sub to permute by spin indices
-                *&mut xc_tensor_spin.i_mut((Ellipsis, 1..4, 1..4)).diagonal_mut((0_isize, -1, -2)) += &xc_sub;
+                *&mut xc_tensor_spin.i_mut((Ellipsis, 1..4, 1..4)).diagonal_mut((0, -1, -2)) += &xc_sub;
             },
             3 => {
                 let xc_tensor_permute_spin = [0, 2, 4, 6, 1, 3, 5];
@@ -382,12 +393,12 @@ pub fn transform_xc_inner(rho: TsrView, xc_val: TsrView, den_type: NIDenType, sp
                 let permute_order_list = [[0, 1, 2, 3, 4, 5, 6], [0, 2, 3, 1, 5, 6, 4], [0, 3, 1, 2, 6, 4, 5]];
                 for permute_order in permute_order_list {
                     let mut xc_tensor_perm = xc_tensor_spin.view_mut().into_transpose(&permute_order);
-                    *&mut xc_tensor_perm.i_mut((Ellipsis, 1..4, 1..4)).diagonal_mut((0_isize, -1, -2)) += &xc_sub_spin;
+                    *&mut xc_tensor_perm.i_mut((Ellipsis, 1..4, 1..4)).diagonal_mut((0, -1, -2)) += &xc_sub_spin;
                 }
             },
             _ => unreachable!(),
         }
     }
 
-    xc_tensor
+    Ok(xc_tensor)
 }
