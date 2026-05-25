@@ -9,38 +9,36 @@ pub fn count_combinations(n: usize, r: usize) -> usize {
     if r > n { 0 } else { (1..=r).fold(1, |acc, val| acc * (n - val + 1) / val) }
 }
 
-pub const fn get_gga_sort(key: (LibXCSpin, usize)) -> Option<&'static [usize]> {
-    match key {
-        (Polarized, 1) => Some(&[0, 1, 2, 3, 4, 5]),
-        (Polarized, 2) => Some(&[6, 7, 9, 10, 11, 8, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
-        (Polarized, 3) => Some(&[
+/* #region libxc-to-xcfun index convention change */
+
+pub const fn libxc_to_xcfun_mapping_parts(den_type: NIDenType, deriv: usize) -> Option<&'static [usize]> {
+    match (den_type, deriv) {
+        (RHO, _) => None,
+        (SIGMA, 0) => Some(&[0]),
+        (SIGMA, 1) => Some(&[1, 2, 3, 4, 5]),
+        (SIGMA, 2) => Some(&[6, 7, 9, 10, 11, 8, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+        (SIGMA, 3) => Some(&[
             21, 22, 25, 26, 27, 23, 28, 29, 30, 34, 35, 36, 37, 38, 39, 24, 31, 32, 33, 40, 41, 42, 43, 44, 45, 46, 47,
             48, 49, 50, 51, 52, 53, 54, 55,
         ]),
-        (Polarized, 4) => Some(&[
+        (SIGMA, 4) => Some(&[
             56, 57, 61, 62, 63, 58, 64, 65, 66, 73, 74, 75, 76, 77, 78, 59, 67, 68, 69, 79, 80, 81, 82, 83, 84, 91, 92,
             93, 94, 95, 96, 97, 98, 99, 100, 60, 70, 71, 72, 85, 86, 87, 88, 89, 90, 101, 102, 103, 104, 105, 106, 107,
             108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125,
         ]),
-        _ => None,
-    }
-}
-
-pub const fn get_mgga_sort(key: (LibXCSpin, usize)) -> Option<&'static [usize]> {
-    // TODO: fix pyscf/libxc convention conflict
-    match key {
-        (Polarized, 1) => Some(&[0, 1, 2, 3, 4, 5, 6, 7]),
-        (Polarized, 2) => Some(&[
+        (TAU, 0) => Some(&[0]),
+        (TAU, 1) => Some(&[1, 2, 3, 4, 5, 6, 7]),
+        (TAU, 2) => Some(&[
             8, 9, 11, 12, 13, 17, 18, 10, 14, 15, 16, 19, 20, 21, 22, 23, 27, 28, 24, 25, 29, 30, 26, 31, 32, 33, 34,
             35,
         ]),
-        (Polarized, 3) => Some(&[
+        (TAU, 3) => Some(&[
             36, 37, 40, 41, 42, 49, 50, 38, 43, 44, 45, 51, 52, 55, 56, 57, 67, 68, 58, 59, 69, 70, 60, 71, 72, 79, 80,
             81, 39, 46, 47, 48, 53, 54, 61, 62, 63, 73, 74, 64, 65, 75, 76, 66, 77, 78, 82, 83, 84, 85, 86, 87, 95, 96,
             88, 89, 97, 98, 90, 99, 100, 107, 108, 109, 91, 92, 101, 102, 93, 103, 104, 110, 111, 112, 94, 105, 106,
             113, 114, 115, 116, 117, 118, 119,
         ]),
-        (Polarized, 4) => Some(&[
+        (TAU, 4) => Some(&[
             120, 121, 125, 126, 127, 137, 138, 122, 128, 129, 130, 139, 140, 145, 146, 147, 163, 164, 148, 149, 165,
             166, 150, 167, 168, 181, 182, 183, 123, 131, 132, 133, 141, 142, 151, 152, 153, 169, 170, 154, 155, 171,
             172, 156, 173, 174, 184, 185, 186, 190, 191, 192, 210, 211, 193, 194, 212, 213, 195, 214, 215, 234, 235,
@@ -52,47 +50,60 @@ pub const fn get_mgga_sort(key: (LibXCSpin, usize)) -> Option<&'static [usize]> 
             301, 302, 303, 313, 314, 315, 316, 270, 271, 287, 288, 272, 289, 290, 304, 305, 306, 273, 291, 292, 307,
             308, 309, 317, 318, 319, 320, 274, 293, 294, 310, 311, 312, 321, 322, 323, 324, 325, 326, 327, 328, 329,
         ]),
-        _ => None,
-    }
-}
-
-pub const fn get_xc_nvar_xlen(den_type: NIDenType, spin: LibXCSpin) -> (usize, usize) {
-    match (den_type, spin) {
-        (RHO, Unpolarized) => (1, 1),
-        (RHO, Polarized) => (1, 2),
-        (SIGMA, Unpolarized) => (4, 2),
-        (SIGMA, Polarized) => (4, 5),
-        (TAU, Unpolarized) => (5, 3),
-        (TAU, Polarized) => (5, 7),
+        // Laplacian-dependent functionals are not supported yet
         (LAPL, _) => unimplemented!(),
+        // We currently only support up to 4th order derivatives (exc, vxc, kxc, fxc, lxc)
+        (_, 5..) => unimplemented!(),
     }
 }
 
-pub fn libxc_to_xcfun_indices(den_type: NIDenType, spin: LibXCSpin, deriv: usize) -> Option<Vec<usize>> {
-    if deriv <= 1 {
+#[doc = include_str!("libxc-xcfun-trans.md")]
+pub fn libxc_to_xcfun_mapping(den_type: NIDenType, spin: LibXCSpin, deriv: usize) -> Option<Vec<usize>> {
+    // some cases that do not require reordering
+    if deriv <= 1 || spin == Unpolarized || den_type == RHO {
         return None;
     }
+    // now we assume spin polarized and order >= 2
+    Some((0..=deriv).flat_map(|o| libxc_to_xcfun_mapping_parts(den_type, o).unwrap().to_vec()).collect())
+}
 
-    match den_type {
-        RHO => None,
-        SIGMA => match spin {
-            Unpolarized => None,
-            Polarized => Some((1..=deriv).flat_map(|i| get_gga_sort((spin, i)).unwrap().to_vec()).collect()),
-        },
-        TAU => match spin {
-            Unpolarized => None,
-            Polarized => Some((1..=deriv).flat_map(|i| get_mgga_sort((spin, i)).unwrap().to_vec()).collect()),
-        },
-        LAPL => unimplemented!("LAPL not implemented"),
+pub fn libxc_transform_xcfun_indices(
+    xc0: TsrView<'_>,
+    den_type: NIDenType,
+    spin: LibXCSpin,
+    deriv: usize,
+) -> TsrCow<'_> {
+    // sanity check
+    assert!(xc0.ndim() == 2, "xc0 must be a 2D tensor");
+    let indices = libxc_to_xcfun_mapping(den_type, spin, deriv);
+    if let Some(indices) = indices { xc0.index_select(-1, &indices).into_cow() } else { xc0.into_cow() }
+}
+
+/* #endregion libxc-to-xcfun index convention change */
+
+/* #region xlen utility */
+
+/// Get the number of components (xlen) for a given density type and spin polarization.
+///
+/// This value should match the first derivative length.
+pub const fn get_xc_xlen(den_type: NIDenType, spin: LibXCSpin) -> usize {
+    match (den_type, spin) {
+        (RHO, Unpolarized) => 1,
+        (RHO, Polarized) => 2,
+        (SIGMA, Unpolarized) => 2,
+        (SIGMA, Polarized) => 5,
+        (TAU, Unpolarized) => 3,
+        (TAU, Polarized) => 7,
+        (LAPL, _) => unimplemented!(),
     }
 }
 
 /// Generates raveled unique indices for the Cartesian product of a given number
 /// of variables and order.
-pub fn product_uniq_indices(nvars: usize, order: usize) -> Vec<usize> {
+pub fn product_uniq_indices(xlen: usize, order: usize) -> Vec<usize> {
     // Generate all unique combinations with replacement
     let uniq_idx: Vec<Vec<usize>> =
-        (0..nvars).combinations_with_replacement(order).map(|v| v.into_iter().collect()).collect();
+        (0..xlen).combinations_with_replacement(order).map(|v| v.into_iter().collect()).collect();
 
     // Create a mapping from sorted indices to their position in uniq_idx
     let mut index_map = std::collections::HashMap::new();
@@ -101,7 +112,7 @@ pub fn product_uniq_indices(nvars: usize, order: usize) -> Vec<usize> {
     }
 
     // Generate all possible Cartesian product indices
-    let cartesian_product = (0..order).map(|_| 0..nvars).multi_cartesian_product();
+    let cartesian_product = (0..order).map(|_| 0..xlen).multi_cartesian_product();
 
     // For each index in the Cartesian product, find its sorted version and lookup
     // the unique position
@@ -114,12 +125,9 @@ pub fn product_uniq_indices(nvars: usize, order: usize) -> Vec<usize> {
         .collect()
 }
 
-pub fn xc_indices_transform(xc0: TsrView<'_>, den_type: NIDenType, spin: LibXCSpin, deriv: usize) -> TsrCow<'_> {
-    // sanity check
-    assert!(xc0.ndim() == 2, "xc0 must be a 2D tensor");
-    let indices = libxc_to_xcfun_indices(den_type, spin, deriv);
-    if let Some(indices) = indices { xc0.index_select(-1, &indices).into_cow() } else { xc0.into_cow() }
-}
+/* #endregion xlen utility */
+
+/* #region unfold sigma */
 
 pub fn vxc_unfold_sigma_spin0(
     frho: &mut [f64],
@@ -283,6 +291,8 @@ pub fn unfold_sigma(
     xc_tensor
 }
 
+/* #endregion unfold sigma */
+
 #[allow(clippy::deref_addrof)]
 pub fn transform_xc_inner(
     rho: TsrView,
@@ -297,7 +307,8 @@ pub fn transform_xc_inner(
 
     // sanity check for dimensions
     let ngrids = rho.shape()[0];
-    let (nvar, xlen) = get_xc_nvar_xlen(den_type, spin);
+    let nvar = den_type.num_rho_comp();
+    let xlen = get_xc_xlen(den_type, spin);
     // check dimensions
     ni_check_shape!(xc_val.shape()[0], ngrids, "xc_val length (grids) mismatch")?;
     ni_check_shape!(xc_val.ndim(), 2, "xc_val must be a 2D tensor")?;
@@ -348,8 +359,7 @@ pub fn transform_xc_inner(
     let mut xc_tensor = unfold_sigma(rho.view(), xc_val.i((.., p0..p1)), spin, order, nvar, xlen, 0);
 
     if order <= 1 {
-        // quick return for 0/1-order derivatives, which does not involve pair
-        // derivatives of sigma
+        // quick return for 0/1-order derivatives, which does not involve pair derivatives of sigma
         return Ok(xc_tensor);
     }
 

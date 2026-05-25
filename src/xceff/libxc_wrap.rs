@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::xceff::xc_deriv::{transform_xc_inner, xc_indices_transform};
+use crate::xceff::xc_deriv::{libxc_transform_xcfun_indices, transform_xc_inner};
 use libxc::compute_cpu::LibXCCpuInput;
 use libxc::prelude::*;
 
@@ -109,6 +109,6 @@ pub fn libxc_eval_eff(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> 
     let ngrids = rho.shape()[0];
     let xlen = xc_val.len() / ngrids;
     let xc_val = rt::asarray((xc_val, [ngrids, xlen].f()));
-    let xc_val = xc_indices_transform(xc_val.view(), den_type, xc_func.spin(), deriv);
+    let xc_val = libxc_transform_xcfun_indices(xc_val.view(), den_type, xc_func.spin(), deriv);
     (0..=deriv).map(|order| transform_xc_inner(rho.view(), xc_val.view(), den_type, xc_func.spin(), order)).collect()
 }
