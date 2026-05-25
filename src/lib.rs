@@ -21,6 +21,7 @@ pub mod prelude {
     pub(crate) use core::assert_matches;
     pub(crate) use itertools::Itertools;
     pub(crate) use libcint::prelude::*;
+    pub(crate) use rayon::prelude::*;
     pub(crate) use rstsr::prelude::*;
     pub(crate) use std::collections::HashMap;
 

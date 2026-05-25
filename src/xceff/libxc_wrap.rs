@@ -79,7 +79,8 @@ pub fn libxc_eval_inner(
     }
 }
 
-// transpose inplace, input slice is [m, n] in column-major
+// transpose inplace, input slice is [m, n] in column-major.
+// current implementation is naive and not cache-friendly; inplace-transpose is difficult task.
 fn transpose_inplace(slc: &mut [f64], m: usize, n: usize) {
     // currently it is a naive implementation
     assert!(slc.len() >= n * m);
@@ -92,7 +93,7 @@ fn transpose_inplace(slc: &mut [f64], m: usize, n: usize) {
     slc[..n * m].copy_from_slice(&buffer);
 }
 
-pub fn libxc_eval_eff(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> Result<Vec<Tsr>, NIError> {
+pub fn libxc_eval_eff_serial(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> Result<Vec<Tsr>, NIError> {
     let den_type = determine_den_type(xc_func)?;
     let (mut xc_val, xc_layout) = libxc_eval_inner(xc_func, rho.view(), deriv)?;
     // inplace transpose the spin-related components
@@ -111,4 +112,69 @@ pub fn libxc_eval_eff(xc_func: &LibXCFunctional, rho: TsrView, deriv: usize) -> 
     let xc_val = rt::asarray((xc_val, [ngrids, xlen].f()));
     let xc_val = libxc_transform_xcfun_indices(xc_val.view(), den_type, xc_func.spin(), deriv);
     (0..=deriv).map(|order| transform_xc_inner(rho.view(), xc_val.view(), den_type, xc_func.spin(), order)).collect()
+}
+
+pub fn libxc_eval_eff_parallel(
+    xc_func: &LibXCFunctional,
+    rho: TsrView,
+    deriv: usize,
+    par_chunk_size: Option<usize>,
+) -> Result<Vec<Tsr>, NIError> {
+    // if in threadpool (thread-index is Some), we use 1 thread to avoid nested parallelism.
+    let nthreads = rayon::current_thread_index().map_or(rayon::current_num_threads(), |_| 1);
+    if nthreads == 1 {
+        return libxc_eval_eff_serial(xc_func, rho, deriv);
+    }
+
+    // determine chunk size
+    // this setting is probably good? anyway, user can set by argument.
+    let den_type = determine_den_type(xc_func)?;
+    let spin = xc_func.spin();
+    let par_chunk_size = par_chunk_size.unwrap_or(match (den_type, spin) {
+        (RHO, Unpolarized) => 16384,
+        (RHO, Polarized) => 6144,
+        (SIGMA, _) => 384,
+        (TAU | LAPL, _) => 256,
+    });
+    let ngrids = rho.shape()[0];
+    let par_chunk_size = ngrids.div_ceil(nthreads).max(par_chunk_size);
+    if par_chunk_size >= ngrids {
+        // if chunk size is larger than total grids, just do serial computation.
+        return libxc_eval_eff_serial(xc_func, rho, deriv);
+    }
+
+    // determine output shape at this stage
+    let nvar = den_type.num_rho_comp();
+    // generate shapes
+    let out_shapes = (0..=deriv)
+        .map(|order| {
+            // unpolarized: [ngrids, [nvar] * deriv]
+            // polarized: [ngrids, [nvar, 2] * deriv]
+            let mut shape = vec![ngrids];
+            for _ in 0..order {
+                match spin {
+                    Unpolarized => shape.push(nvar),
+                    Polarized => shape.extend_from_slice(&[nvar, 2]),
+                }
+            }
+            shape
+        })
+        .collect_vec();
+    // generate tensors
+    let xc_eff = out_shapes.iter().map(|shape| rt::zeros((shape.to_vec(), &rho.device().clone()))).collect_vec();
+
+    // parallel computation
+    (0..ngrids).into_par_iter().step_by(par_chunk_size).for_each(|start| {
+        let stop = (start + par_chunk_size).min(ngrids);
+        let rho_chunk = rho.i(start..stop);
+        let xc_eff_chunk =
+            libxc_eval_eff_serial(xc_func, rho_chunk, deriv).expect("LibXC evaluation failed in parallel");
+        for (order, xc_eff_order) in xc_eff_chunk.into_iter().enumerate() {
+            let xc_eff_orig = xc_eff[order].i(start..stop);
+            let mut xc_eff_orig = unsafe { xc_eff_orig.force_mut() };
+            xc_eff_orig.assign(&xc_eff_order);
+        }
+    });
+
+    Ok(xc_eff)
 }
