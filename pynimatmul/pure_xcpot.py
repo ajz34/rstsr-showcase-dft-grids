@@ -66,7 +66,6 @@ def rks_vxc_pot_with_eff(
     assert weights.shape == (ngrids,)
     assert num_nvar(den_type) == nvar
     assert ao.ndim == 3
-    nao = ao.shape[1]
     assert ao.shape[2] == ngrids
     assert ao.shape[0] >= num_ao_comp(den_type)
 
