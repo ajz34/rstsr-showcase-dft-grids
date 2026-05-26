@@ -6,8 +6,13 @@ This implementation uses naive BLAS-3 and not optimized.
 
 from pyscf import gto, dft
 import numpy as np
-from pynimatmul.flags import num_ao_deriv, num_nvar
-from pynimatmul.pure_eval_rho import get_rho_from_dm_with_output
+from pynimatmul.flags import num_ao_deriv, num_nvar, num_ao_comp
+from pynimatmul.pure_eval_rho import (
+    get_rho_from_dm_with_output,
+    get_rho_from_homogeneous_braket_with_output,
+    get_rho_from_one_bra_mult_ket_with_output,
+    get_rho_from_mult_bra_mult_ket_with_output,
+)
 
 
 class NIMatmul:
@@ -22,7 +27,6 @@ class NIMatmul:
         coords: np.ndarray,
         weights: np.ndarray,
     ):
-        # dimension sanity check
         assert coords.ndim == 2
         assert weights.ndim == 1
         assert coords.shape[0] == weights.shape[0]
@@ -34,7 +38,7 @@ class NIMatmul:
         self.cache_tensor = {}
 
     def get_ao(self, deriv: int) -> np.ndarray:
-        """(non-trait-fn) Get the AO values.
+        """Get the AO values.
 
         Arguments:
             deriv: int, the order of derivatives.
@@ -78,12 +82,62 @@ class NIMatmul:
         buf = np.empty(ngrids * nao)
         return get_rho_from_dm_with_output(ao, dm_list, den_type, out, buf)
 
+    def get_rho_from_homogeneous_braket(
+        self, bra_list: list[np.ndarray], den_type: str
+    ) -> np.ndarray:
+        ao = self.get_cached_ao(num_ao_deriv(den_type))
 
-if __name__ == "__main__":
-    mol = gto.Mole(atom="O; H 1 0.94; H 1 0.94 2 104.5", basis="def2-TZVP").build()
-    mf = dft.RKS(mol, xc="TPSS0").run()
+        ngrid = ao.shape[2]
+        nao = ao.shape[1]
+        for bra in bra_list:
+            assert bra.ndim == 2
+            assert bra.shape[0] == nao
+        nocc_max = max(bra.shape[1] for bra in bra_list) if bra_list else 0
+        nset = len(bra_list)
 
-    grids = mf.grids
-    nimatmul = NIMatmul(mol, grids.coords, grids.weights)
-    ao = nimatmul.get_cached_ao(2)
-    print(ao.shape, ao.strides)
+        out_shape = (nset, num_nvar(den_type), ngrid)
+        out = np.zeros(out_shape)
+        buf = np.empty(2 * ngrid * nocc_max)
+        return get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out, buf)
+
+    def get_rho_from_one_bra_mult_ket(
+        self, bra: np.ndarray, ket_list: list[np.ndarray], den_type: str
+    ) -> np.ndarray:
+        ao = self.get_cached_ao(num_ao_deriv(den_type))
+
+        ngrid = ao.shape[2]
+        nao = ao.shape[1]
+        assert bra.ndim == 2
+        assert bra.shape[0] == nao
+        nocc = bra.shape[1]
+        for ket in ket_list:
+            assert ket.ndim == 2
+            assert ket.shape[0] == nao
+            assert ket.shape[1] == nocc
+        nset = len(ket_list)
+
+        out_shape = (nset, num_nvar(den_type), ngrid)
+        out = np.zeros(out_shape)
+        buf = np.empty(3 * ngrid * nocc)
+        return get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out, buf)
+
+    def get_rho_from_mult_bra_mult_ket(
+        self, bra_list: list[np.ndarray], ket_list: list[np.ndarray], den_type: str
+    ) -> np.ndarray:
+        ao = self.get_cached_ao(num_ao_deriv(den_type))
+
+        ngrid = ao.shape[2]
+        nao = ao.shape[1]
+        for bra, ket in zip(bra_list, ket_list):
+            assert bra.ndim == 2
+            assert ket.ndim == 2
+            assert bra.shape[0] == nao
+            assert ket.shape[0] == nao
+            assert bra.shape[1] == ket.shape[1]
+        nocc_max = max(bra.shape[1] for bra in bra_list) if bra_list else 0
+        nset = len(bra_list)
+
+        out_shape = (nset, num_nvar(den_type), ngrid)
+        out = np.zeros(out_shape)
+        buf = np.empty(3 * ngrid * nocc_max)
+        return get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out, buf)

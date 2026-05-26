@@ -1,0 +1,143 @@
+import unittest
+from pyscf import gto, dft, lib
+from pynimatmul.nimatmul import NIMatmul
+import numpy as np
+
+
+def setUpModule():
+    global mol, mf, mo_coeff, mo_occ, rdm1, coords, weights, ngrids
+    mol = gto.Mole(atom="C; H 1 0.94; H 1 0.94 2 104.5", basis="def2-TZVP", spin=2).build()
+    mf = dft.UKS(mol, xc="TPSS0").run()
+    mo_coeff = mf.mo_coeff
+    mo_occ = mf.mo_occ
+    rdm1 = mf.make_rdm1()
+    coords = mf.grids.coords
+    weights = mf.grids.weights
+    ngrids = coords.shape[0]
+
+
+class TestGetRhoFromDM(unittest.TestCase):
+    def test_rho(self):
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_dm(list(rdm1), "RHO")
+        self.assertEqual(out.shape, (2, 1, ngrids))
+        self.assertAlmostEqual(lib.fp(out), 89.5667112077174, places=4)
+
+    def test_sigma(self):
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_dm(list(rdm1), "SIGMA")
+        self.assertEqual(out.shape, (2, 4, ngrids))
+        self.assertAlmostEqual(lib.fp(out), 366.8272290717641, places=3)
+
+    def test_tau(self):
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_dm(list(rdm1), "TAU")
+        self.assertEqual(out.shape, (2, 5, ngrids))
+        self.assertAlmostEqual(lib.fp(out), 5530.870742026818, places=3)
+
+    def test_lapl(self):
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_dm(list(rdm1), "LAPL")
+        self.assertEqual(out.shape, (2, 6, ngrids))
+        self.assertAlmostEqual(lib.fp(out[:, :5, :]), 5530.87074202681, places=3)
+        self.assertAlmostEqual(lib.fp(out[:, 5, :]), -772389.1193085021, places=0)
+
+
+class TestGetRhoFromHomogeneousBraket(unittest.TestCase):
+    def _get_bra_list(self):
+        occ_mask_a = mo_occ[0] > 0
+        bra_a = mo_coeff[0][:, occ_mask_a] * np.sqrt(mo_occ[0][occ_mask_a])
+        occ_mask_b = mo_occ[1] > 0
+        bra_b = mo_coeff[1][:, occ_mask_b] * np.sqrt(mo_occ[1][occ_mask_b])
+        return [bra_a, bra_b]
+
+    def test_rho(self):
+        bra_list = self._get_bra_list()
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "RHO")
+        ref = ni_obj.get_rho_from_dm(list(rdm1), "RHO")
+        self.assertEqual(out.shape, (2, 1, ngrids))
+        self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=8)
+
+    def test_sigma(self):
+        bra_list = self._get_bra_list()
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "SIGMA")
+        ref = ni_obj.get_rho_from_dm(list(rdm1), "SIGMA")
+        self.assertEqual(out.shape, (2, 4, ngrids))
+        self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=8)
+
+    def test_tau(self):
+        bra_list = self._get_bra_list()
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "TAU")
+        ref = ni_obj.get_rho_from_dm(list(rdm1), "TAU")
+        self.assertEqual(out.shape, (2, 5, ngrids))
+        self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=8)
+
+    def test_lapl(self):
+        bra_list = self._get_bra_list()
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "LAPL")
+        ref = ni_obj.get_rho_from_dm(list(rdm1), "LAPL")
+        self.assertEqual(out.shape, (2, 6, ngrids))
+        self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=6)
+
+
+class TestGetRhoFromOneBraMultKet(unittest.TestCase):
+    def _get_bra_ket(self):
+        bra = mo_coeff[0, :, :4]
+        ket_a = mo_coeff[0, :, :4]
+        ket_b = mo_coeff[1, :, :4]
+        return bra, [ket_a, ket_b]
+
+    def test_rho(self):
+        bra, ket_list = self._get_bra_ket()
+        ni_obj = NIMatmul(mol, coords, weights)
+        out = ni_obj.get_rho_from_one_bra_mult_ket(bra, ket_list, "RHO")
+        self.assertEqual(out.shape, (2, 1, ngrids))
+
+    def test_cross_check(self):
+        bra, ket_list = self._get_bra_ket()
+        ket_a, ket_b = ket_list
+        dm_a = bra @ ket_a.T
+        dm_a_sym = (dm_a + dm_a.T) * 0.5
+        dm_b = bra @ ket_b.T
+        dm_b_sym = (dm_b + dm_b.T) * 0.5
+        ni_obj = NIMatmul(mol, coords, weights)
+        for den_type in ["RHO", "SIGMA", "TAU", "LAPL"]:
+            out = ni_obj.get_rho_from_one_bra_mult_ket(bra, ket_list, den_type)
+            ref_a = ni_obj.get_rho_from_dm([dm_a_sym], den_type)
+            ref_b = ni_obj.get_rho_from_dm([dm_b_sym], den_type)
+            diff_a = np.abs(out[0] - ref_a[0]).max()
+            diff_b = np.abs(out[1] - ref_b[0]).max()
+            self.assertLess(diff_a, 1e-8, f"Mismatch for alpha set, {den_type}: max diff = {diff_a}")
+            self.assertLess(diff_b, 1e-8, f"Mismatch for beta set, {den_type}: max diff = {diff_b}")
+
+
+class TestGetRhoFromMultBraMultKet(unittest.TestCase):
+    def _get_bra_ket_lists(self):
+        bra_a = mo_coeff[0, :, :4]
+        bra_b = mo_coeff[1, :, :4]
+        ket_a = mo_coeff[0, :, :4]
+        ket_b = mo_coeff[1, :, :4]
+        return [bra_a, bra_b], [ket_a, ket_b]
+
+    def test_cross_check(self):
+        bra_list, ket_list = self._get_bra_ket_lists()
+        bra_a, bra_b = bra_list
+        ket_a, ket_b = ket_list
+        dm_a = bra_a @ ket_a.T
+        dm_a_sym = (dm_a + dm_a.T) * 0.5
+        dm_b = bra_b @ ket_b.T
+        dm_b_sym = (dm_b + dm_b.T) * 0.5
+        ni_obj = NIMatmul(mol, coords, weights)
+        for den_type in ["RHO", "SIGMA", "TAU", "LAPL"]:
+            out = ni_obj.get_rho_from_mult_bra_mult_ket(bra_list, ket_list, den_type)
+            self.assertEqual(out.shape, (2, {"RHO": 1, "SIGMA": 4, "TAU": 5, "LAPL": 6}[den_type], ngrids))
+            ref_a = ni_obj.get_rho_from_dm([dm_a_sym], den_type)
+            ref_b = ni_obj.get_rho_from_dm([dm_b_sym], den_type)
+            diff_a = np.abs(out[0] - ref_a[0]).max()
+            diff_b = np.abs(out[1] - ref_b[0]).max()
+            self.assertLess(diff_a, 1e-8, f"Mismatch for alpha set, {den_type}: max diff = {diff_a}")
+            self.assertLess(diff_b, 1e-8, f"Mismatch for beta set, {den_type}: max diff = {diff_b}")
