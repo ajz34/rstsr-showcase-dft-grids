@@ -2,6 +2,47 @@ import numpy as np
 from pynimatmul.flags import num_ao_comp, num_nvar
 
 
+def contract_ao_wv(den_type: str, wv: np.ndarray, ao: np.ndarray) -> np.ndarray:
+    """Contract AO with wv for RHO/SIGMA/TAU.
+
+    Parameters
+    ----------
+    den_type : str
+        The type of density to compute. Can be "RHO", "SIGMA", or "TAU".
+    wv : np.ndarray
+        The weight vector, shape [nvar, ngrids].
+    ao : np.ndarray
+        The AO values, shape [ncomp, nao, ngrids].
+
+    Returns
+    -------
+    contracted : np.ndarray
+        The contracted AO, shape [nao, ngrids].
+    """
+    nvar, ngrids = wv.shape
+    assert num_nvar(den_type) == nvar
+    assert ao.ndim == 3
+    nao = ao.shape[1]
+    assert ao.shape[2] == ngrids
+    assert ao.shape[0] >= num_ao_comp(den_type)
+
+    contracted = np.zeros((nao, nao))
+    # RHO contribution
+    contracted += 0.5 * ao[0] * wv[0] @ ao[0].T
+    # SIGMA contribution
+    if den_type in ("SIGMA", "TAU"):
+        contracted += ao[1] * wv[1] @ ao[0].T
+        contracted += ao[2] * wv[2] @ ao[0].T
+        contracted += ao[3] * wv[3] @ ao[0].T
+    # TAU contribution
+    if den_type in ("TAU",):
+        contracted += 0.25 * ao[1] * wv[4] @ ao[1].T
+        contracted += 0.25 * ao[2] * wv[4] @ ao[2].T
+        contracted += 0.25 * ao[3] * wv[4] @ ao[3].T
+    contracted += contracted.swapaxes(-1, -2)
+    return contracted
+
+
 def rks_vxc_pot_with_eff(
     den_type: str,
     vxc_eff: np.ndarray,
@@ -32,22 +73,7 @@ def rks_vxc_pot_with_eff(
     if den_type == "LAPL":
         raise NotImplementedError
 
-    vxc = np.zeros((nao, nao))
-    # RHO contribution
-
-    vxc += 0.5 * ao[0] * (weights * vxc_eff[0]) @ ao[0].T
-    # SIGMA contribution
-    if den_type in ("SIGMA", "TAU"):
-        vxc += ao[1] * (weights * vxc_eff[1]) @ ao[0].T
-        vxc += ao[2] * (weights * vxc_eff[2]) @ ao[0].T
-        vxc += ao[3] * (weights * vxc_eff[3]) @ ao[0].T
-    # TAU contribution
-    if den_type in ("TAU",):
-        wv_4 = weights * vxc_eff[4]
-        vxc += 0.25 * ao[1] * wv_4 @ ao[1].T
-        vxc += 0.25 * ao[2] * wv_4 @ ao[2].T
-        vxc += 0.25 * ao[3] * wv_4 @ ao[3].T
-    vxc += vxc.swapaxes(-1, -2)
+    vxc = contract_ao_wv(den_type, weights * vxc_eff, ao)
     return vxc
 
 
@@ -89,16 +115,7 @@ def rks_fxc_pot_with_eff(
     fxc = np.zeros((nset, nao, nao))
     for i in range(nset):
         fxc_contract = weights * (fxc_eff * rho1[i, None, :, :]).sum(axis=-2)
-        fxc[i] += 0.5 * ao[0] * fxc_contract[0] @ ao[0].T
-        if den_type in ("SIGMA", "TAU"):
-            fxc[i] += ao[1] * fxc_contract[1] @ ao[0].T
-            fxc[i] += ao[2] * fxc_contract[2] @ ao[0].T
-            fxc[i] += ao[3] * fxc_contract[3] @ ao[0].T
-        if den_type in ("TAU",):
-            fxc[i] += 0.25 * ao[1] * fxc_contract[4] @ ao[1].T
-            fxc[i] += 0.25 * ao[2] * fxc_contract[4] @ ao[2].T
-            fxc[i] += 0.25 * ao[3] * fxc_contract[4] @ ao[3].T
-    fxc += fxc.swapaxes(-1, -2)
+        fxc[i] = contract_ao_wv(den_type, fxc_contract, ao)
     return fxc
 
 
@@ -150,14 +167,5 @@ def rks_kxc_pot_with_eff(
             kxc_contract = weights * (
                 kxc_eff * rho1[i1, None, None, :, :] * rho2[i2, None, :, None, :]
             ).sum(axis=(-3, -2))
-            kxc[i2, i1] += 0.5 * ao[0] * kxc_contract[0] @ ao[0].T
-            if den_type in ("SIGMA", "TAU"):
-                kxc[i2, i1] += ao[1] * kxc_contract[1] @ ao[0].T
-                kxc[i2, i1] += ao[2] * kxc_contract[2] @ ao[0].T
-                kxc[i2, i1] += ao[3] * kxc_contract[3] @ ao[0].T
-            if den_type in ("TAU",):
-                kxc[i2, i1] += 0.25 * ao[1] * kxc_contract[4] @ ao[1].T
-                kxc[i2, i1] += 0.25 * ao[2] * kxc_contract[4] @ ao[2].T
-                kxc[i2, i1] += 0.25 * ao[3] * kxc_contract[4] @ ao[3].T
-    kxc += kxc.swapaxes(-1, -2)
+            kxc[i2, i1] = contract_ao_wv(den_type, kxc_contract, ao)
     return kxc
