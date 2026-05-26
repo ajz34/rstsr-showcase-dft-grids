@@ -13,6 +13,11 @@ from pynimatmul.pure_eval_rho import (
     get_rho_from_one_bra_mult_ket_with_output,
     get_rho_from_mult_bra_mult_ket_with_output,
 )
+from pynimatmul.pure_xcpot import (
+    rks_fxc_pot_with_eff,
+    rks_kxc_pot_with_eff,
+    rks_vxc_pot_with_eff,
+)
 
 
 class NIMatmul:
@@ -61,9 +66,16 @@ class NIMatmul:
     def get_cached_ao(self, deriv: int):
         AO_DERIV_DIM = [1, 4, 10, 20, 35]
         assert deriv < len(AO_DERIV_DIM)
+        # determine maximum cached derivative level
+        max_cached_deriv = (
+            max([int(key.split("deriv")[1]) for key in self.cache_tensor.keys()])
+            if self.cache_tensor
+            else -1
+        )
+        if max_cached_deriv >= deriv:
+            filter_str = f"GTOval_sph_deriv{max_cached_deriv}"
+            return self.cache_tensor[filter_str][: AO_DERIV_DIM[deriv], :, :]
         filter_str = f"GTOval_sph_deriv{deriv}"
-        if filter_str in self.cache_tensor:
-            return self.cache_tensor[filter_str]
         self.cache_tensor[filter_str] = self.get_ao(deriv)
         return self.cache_tensor[filter_str]
 
@@ -98,7 +110,9 @@ class NIMatmul:
         out_shape = (nset, num_nvar(den_type), ngrid)
         out = np.zeros(out_shape)
         buf = np.empty(2 * ngrid * nocc_max)
-        return get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out, buf)
+        return get_rho_from_homogeneous_braket_with_output(
+            ao, bra_list, den_type, out, buf
+        )
 
     def get_rho_from_one_bra_mult_ket(
         self, bra: np.ndarray, ket_list: list[np.ndarray], den_type: str
@@ -119,7 +133,9 @@ class NIMatmul:
         out_shape = (nset, num_nvar(den_type), ngrid)
         out = np.zeros(out_shape)
         buf = np.empty(3 * ngrid * nocc)
-        return get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out, buf)
+        return get_rho_from_one_bra_mult_ket_with_output(
+            ao, bra, ket_list, den_type, out, buf
+        )
 
     def get_rho_from_mult_bra_mult_ket(
         self, bra_list: list[np.ndarray], ket_list: list[np.ndarray], den_type: str
@@ -140,4 +156,38 @@ class NIMatmul:
         out_shape = (nset, num_nvar(den_type), ngrid)
         out = np.zeros(out_shape)
         buf = np.empty(3 * ngrid * nocc_max)
-        return get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out, buf)
+        return get_rho_from_mult_bra_mult_ket_with_output(
+            ao, bra_list, ket_list, den_type, out, buf
+        )
+
+    def get_vxc_pot_with_eff(
+        self, vxc_eff: np.ndarray, den_type: str, spin: int
+    ) -> np.ndarray:
+        ao = self.get_cached_ao(num_ao_deriv(den_type))
+        if spin == 0:
+            return rks_vxc_pot_with_eff(den_type, vxc_eff, ao, self.weights)
+        else:
+            raise NotImplementedError("UKS not implemented yet")
+
+    def get_fxc_pot_with_eff(
+        self, fxc_eff: np.ndarray, rho1: np.ndarray, den_type: str, spin: int
+    ) -> np.ndarray:
+        ao = self.get_cached_ao(num_ao_deriv(den_type))
+        if spin == 0:
+            return rks_fxc_pot_with_eff(den_type, fxc_eff, rho1, ao, self.weights)
+        else:
+            raise NotImplementedError("UKS not implemented yet")
+
+    def get_kxc_pot_with_eff(
+        self,
+        kxc_eff: np.ndarray,
+        rho1: np.ndarray,
+        rho2: np.ndarray,
+        den_type: str,
+        spin: int,
+    ) -> np.ndarray:
+        ao = self.get_cached_ao(num_ao_deriv(den_type))
+        if spin == 0:
+            return rks_kxc_pot_with_eff(den_type, kxc_eff, rho1, rho2, ao, self.weights)
+        else:
+            raise NotImplementedError("UKS not implemented yet")
