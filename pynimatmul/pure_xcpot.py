@@ -169,3 +169,163 @@ def rks_kxc_pot_with_eff(
             ).sum(axis=(-3, -2))
             kxc[i2, i1] = contract_ao_wv(den_type, kxc_contract, ao)
     return kxc
+
+
+def uks_vxc_pot_with_eff(
+    den_type: str,
+    vxc_eff: np.ndarray,
+    ao: np.ndarray,
+    weights: np.ndarray,
+):
+    """Evaluate UKS XC potential (1st order) with vxc_eff.
+
+    Parameters
+    ----------
+    den_type : str
+        The type of electron density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+    vxc_eff : np.ndarray
+        The effective XC potential, shape [2, nvar, ngrids].
+    ao : np.ndarray
+        The basis functions, shape [ncomp, nao, ngrids].
+    weights : np.ndarray
+        The integration weights, shape [ngrids].
+
+    Returns
+    -------
+    vxc : np.ndarray
+        The XC potential, shape [2, nao, nao].
+    """
+    nspin, nvar, ngrids = vxc_eff.shape
+    assert nspin == 2
+    assert weights.shape == (ngrids,)
+    assert num_nvar(den_type) == nvar
+    assert ao.ndim == 3
+    nao = ao.shape[1]
+    assert ao.shape[2] == ngrids
+    assert ao.shape[0] >= num_ao_comp(den_type)
+
+    if den_type == "LAPL":
+        raise NotImplementedError
+
+    vxc = np.zeros((2, nao, nao))
+    for s in range(2):
+        vxc[s] = contract_ao_wv(den_type, weights * vxc_eff[s], ao)
+    return vxc
+
+
+def uks_fxc_pot_with_eff(
+    den_type: str,
+    fxc_eff: np.ndarray,
+    rho1: np.ndarray,
+    ao: np.ndarray,
+    weights: np.ndarray,
+):
+    """Evaluate UKS XC potential (2nd order) with fxc_eff.
+
+    Parameters
+    ----------
+    den_type : str
+        The type of electron density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+    fxc_eff : np.ndarray
+        The effective XC kernel, shape [2, nvar, 2, nvar, ngrids].
+    rho1 : np.ndarray
+        The first-order density response, shape [nset, 2, nvar, ngrids].
+    ao : np.ndarray
+        The basis functions, shape [ncomp, nao, ngrids].
+    weights : np.ndarray
+        The integration weights, shape [ngrids].
+
+    Returns
+    -------
+    fxc : np.ndarray
+        The second-order XC potential, shape [nset, 2, nao, nao].
+    """
+    nset, nspin, nvar, ngrids = rho1.shape
+    assert nspin == 2
+    assert fxc_eff.shape == (2, nvar, 2, nvar, ngrids)
+    assert weights.shape == (ngrids,)
+    assert num_nvar(den_type) == nvar
+    assert ao.ndim == 3
+    nao = ao.shape[1]
+    assert ao.shape[2] == ngrids
+    assert ao.shape[0] >= num_ao_comp(den_type)
+
+    if den_type == "LAPL":
+        raise NotImplementedError
+
+    # Merge spin and var dims: [2, v0, 2, v1, g] -> [2, v0, 2*v1, g]
+    fxc_eff_reshape = fxc_eff.reshape(2, nvar, 2 * nvar, ngrids)
+    # [nset, 2, v1, g] -> [nset, 2*v1, g]
+    rho1_reshape = rho1.reshape(nset, 2 * nvar, ngrids)
+
+    fxc = np.zeros((nset, 2, nao, nao))
+    for i in range(nset):
+        for s in range(2):
+            fxc_contract = weights * (
+                fxc_eff_reshape[s] * rho1_reshape[i, None, :, :]
+            ).sum(axis=-2)
+            fxc[i, s] = contract_ao_wv(den_type, fxc_contract, ao)
+    return fxc
+
+
+def uks_kxc_pot_with_eff(
+    den_type: str,
+    kxc_eff: np.ndarray,
+    rho1: np.ndarray,
+    rho2: np.ndarray,
+    ao: np.ndarray,
+    weights: np.ndarray,
+):
+    """Evaluate UKS XC potential (3rd order) with kxc_eff.
+
+    Parameters
+    ----------
+    den_type : str
+        The type of electron density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+    kxc_eff : np.ndarray
+        The effective XC kernel, shape [2, nvar, 2, nvar, 2, nvar, ngrids].
+    rho1 : np.ndarray
+        The first-order density response, shape [nset1, 2, nvar, ngrids].
+    rho2 : np.ndarray
+        The second-order density response, shape [nset2, 2, nvar, ngrids].
+    ao : np.ndarray
+        The basis functions, shape [ncomp, nao, ngrids].
+    weights : np.ndarray
+        The integration weights, shape [ngrids].
+
+    Returns
+    -------
+    kxc : np.ndarray
+        The third-order XC potential, shape [nset2, nset1, 2, nao, nao].
+    """
+    nset1, nspin, nvar, ngrids = rho1.shape
+    nset2 = rho2.shape[0]
+    assert nspin == 2
+    assert kxc_eff.shape == (2, nvar, 2, nvar, 2, nvar, ngrids)
+    assert rho2.shape == (nset2, 2, nvar, ngrids)
+    assert weights.shape == (ngrids,)
+    assert num_nvar(den_type) == nvar
+    assert ao.ndim == 3
+    nao = ao.shape[1]
+    assert ao.shape[2] == ngrids
+    assert ao.shape[0] >= num_ao_comp(den_type)
+
+    if den_type == "LAPL":
+        raise NotImplementedError
+
+    # Merge spin and var dims
+    kxc_eff_reshape = kxc_eff.reshape(2, nvar, 2 * nvar, 2 * nvar, ngrids)
+    rho1_reshape = rho1.reshape(nset1, 2 * nvar, ngrids)
+    rho2_reshape = rho2.reshape(nset2, 2 * nvar, ngrids)
+
+    kxc = np.zeros((nset2, nset1, 2, nao, nao))
+    for i2 in range(nset2):
+        for i1 in range(nset1):
+            for s in range(2):
+                kxc_contract = weights * (
+                    kxc_eff_reshape[s]
+                    * rho1_reshape[i1, None, None, :, :]
+                    * rho2_reshape[i2, None, :, None, :]
+                ).sum(axis=(-3, -2))
+                kxc[i2, i1, s] = contract_ao_wv(den_type, kxc_contract, ao)
+    return kxc

@@ -17,6 +17,9 @@ from pynimatmul.pure_xcpot import (
     rks_fxc_pot_with_eff,
     rks_kxc_pot_with_eff,
     rks_vxc_pot_with_eff,
+    uks_fxc_pot_with_eff,
+    uks_kxc_pot_with_eff,
+    uks_vxc_pot_with_eff,
 )
 
 
@@ -167,7 +170,7 @@ class NIMatmul:
         if spin == 0:
             return rks_vxc_pot_with_eff(den_type, vxc_eff, ao, self.weights)
         else:
-            raise NotImplementedError("UKS not implemented yet")
+            return uks_vxc_pot_with_eff(den_type, vxc_eff, ao, self.weights)
 
     def get_fxc_pot_with_eff(
         self, fxc_eff: np.ndarray, rho1: np.ndarray, den_type: str, spin: int
@@ -176,7 +179,7 @@ class NIMatmul:
         if spin == 0:
             return rks_fxc_pot_with_eff(den_type, fxc_eff, rho1, ao, self.weights)
         else:
-            raise NotImplementedError("UKS not implemented yet")
+            return uks_fxc_pot_with_eff(den_type, fxc_eff, rho1, ao, self.weights)
 
     def get_kxc_pot_with_eff(
         self,
@@ -190,4 +193,4 @@ class NIMatmul:
         if spin == 0:
             return rks_kxc_pot_with_eff(den_type, kxc_eff, rho1, rho2, ao, self.weights)
         else:
-            raise NotImplementedError("UKS not implemented yet")
+            return uks_kxc_pot_with_eff(den_type, kxc_eff, rho1, rho2, ao, self.weights)
