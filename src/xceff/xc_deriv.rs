@@ -307,7 +307,7 @@ pub fn transform_xc_inner(
 
     // sanity check for dimensions
     let ngrids = rho.shape()[0];
-    let nvar = den_type.num_rho_comp();
+    let nvar = den_type.num_nvar();
     let xlen = get_xc_xlen(den_type, spin);
     // check dimensions
     ni_check_shape!(xc_val.shape()[0], ngrids, "xc_val length (grids) mismatch")?;

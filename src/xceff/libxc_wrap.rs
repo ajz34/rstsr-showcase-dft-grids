@@ -42,7 +42,7 @@ pub fn libxc_eval_inner(
         return Err(ni_error!("Laplacian-dependent functionals are not supported yet"));
     }
     let den_type = determine_den_type(xc_func)?;
-    ni_check_shape!(rho.shape()[1] >= den_type.num_rho_comp(), "Input density does not have enough components")?;
+    ni_check_shape!(rho.shape()[1] >= den_type.num_nvar(), "Input density does not have enough components")?;
     let do_rho = matches!(den_type, RHO | SIGMA | TAU | LAPL);
     let do_sigma = matches!(den_type, SIGMA | TAU | LAPL);
     let do_tau = matches!(den_type, TAU | LAPL);
@@ -152,7 +152,7 @@ pub fn libxc_eval_eff_parallel(
     }
 
     // determine output shape at this stage
-    let nvar = den_type.num_rho_comp();
+    let nvar = den_type.num_nvar();
     // generate shapes
     let out_shapes = (0..=deriv)
         .map(|order| {

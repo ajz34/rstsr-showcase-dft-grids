@@ -24,7 +24,7 @@ impl NIDenType {
     /// - SIGMA: 4 components (density + 3 gradient components)
     /// - TAU: 5 components (density + 3 gradient components + kinetic energy density)
     /// - LAPL: 6 components (density + 3 gradient components + kinetic energy density + laplacian)
-    pub fn num_rho_comp(&self) -> usize {
+    pub fn num_nvar(&self) -> usize {
         match self {
             NIDenType::RHO => 1,
             NIDenType::SIGMA => 4,

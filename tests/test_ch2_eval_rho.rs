@@ -171,7 +171,7 @@ fn get_rho_from_mult_bra_mult_ket() {
     let dm_b_sym = (&dm_b + &dm_b.t()) * 0.5;
     for den_type in [NIDenType::RHO, NIDenType::SIGMA, NIDenType::TAU, NIDenType::LAPL] {
         let out = ni_obj.make_rho_from_mult_bra_mult_ket(&bra_list, &ket_list, den_type).unwrap();
-        assert_eq!(out.shape(), &[ngrids, den_type.num_rho_comp(), 2]);
+        assert_eq!(out.shape(), &[ngrids, den_type.num_nvar(), 2]);
         let ref_a = ni_obj.make_rho_from_dm(&[dm_a_sym.view()], den_type).unwrap();
         let ref_b = ni_obj.make_rho_from_dm(&[dm_b_sym.view()], den_type).unwrap();
         let diff_a = (&out.i((.., .., 0)) - &ref_a.i((.., .., 0))).abs().max();

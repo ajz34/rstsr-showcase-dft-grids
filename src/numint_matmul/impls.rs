@@ -2,6 +2,7 @@ use super::prelude::*;
 
 impl<'a> NIMatMul<'a> {
     pub fn new(cint: &CInt, coords: &[[f64; 3]], weights: &[f64]) -> Self {
+        assert!(coords.len() == weights.len(), "Number of coordinates must match number of weights");
         Self { cint: cint.clone(), coords: coords.to_vec(), weights: weights.to_vec(), cache_tensor: HashMap::new() }
     }
 
@@ -38,19 +39,18 @@ impl<'a> NIMatMul<'a> {
     pub fn make_rho_from_dm(&mut self, dm_list: &[TsrView], den_type: NIDenType) -> Result<Tsr, NIError> {
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
-        let ngrid = ao.shape()[0];
+        let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
         for dm in dm_list {
             ni_check_shape!(dm.ndim(), 2, "Each density matrix must be 2D")?;
-            ni_check_shape!(dm.shape()[0], nao, "Density matrix first dimension must match AO dimension")?;
-            ni_check_shape!(dm.shape()[1], nao, "Density matrix must be square")?;
+            ni_check_shape!(dm.shape()[0..2], [nao, nao], "Density matrix must match AO dimension")?;
         }
         let nset = dm_list.len();
 
-        let out_shape = [ngrid, den_type.num_rho_comp(), nset];
+        let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        let mut buf = vec![0.0; ngrid * nao];
+        let mut buf = vec![0.0; ngrids * nao];
         get_rho_from_dm_with_output(ao, dm_list, den_type, out.view_mut(), &mut buf)?;
         Ok(out)
     }
@@ -72,7 +72,7 @@ impl<'a> NIMatMul<'a> {
         let nset = bra_list.len();
 
         // compute the output
-        let out_shape = [ngrid, den_type.num_rho_comp(), nset];
+        let out_shape = [ngrid, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
         let mut buf = vec![0.0; 2 * ngrid * nocc_max];
@@ -100,7 +100,7 @@ impl<'a> NIMatMul<'a> {
         }
         let nset = ket_list.len();
 
-        let out_shape = [ngrid, den_type.num_rho_comp(), nset];
+        let out_shape = [ngrid, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
         let mut buf = vec![0.0; 3 * ngrid * nocc];
@@ -128,7 +128,7 @@ impl<'a> NIMatMul<'a> {
         let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
         let nset = bra_list.len();
 
-        let out_shape = [ngrid, den_type.num_rho_comp(), nset];
+        let out_shape = [ngrid, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
         let mut buf = vec![0.0; 3 * ngrid * nocc_max];
