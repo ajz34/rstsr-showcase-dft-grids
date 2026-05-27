@@ -330,7 +330,9 @@ def uks_kxc_pot_with_eff(
     return kxc
 
 
-def contract_ao_wv_bra(den_type: str, wv: np.ndarray, ao: np.ndarray, ao_bra: np.ndarray) -> np.ndarray:
+def contract_ao_wv_bra(
+    den_type: str, wv: np.ndarray, ao: np.ndarray, ao_bra: np.ndarray
+) -> np.ndarray:
     """Contract AO with wv for RHO/SIGMA/TAU.
 
     Parameters
@@ -427,4 +429,67 @@ def rks_fxc_pot_with_eff_bra_trans(
     for i in range(nset):
         fxc_contract = weights * (fxc_eff * rho1[i, None, :, :]).sum(axis=-2)
         fxc[i] = contract_ao_wv_bra(den_type, fxc_contract, ao, ao_bra)
+    return fxc
+
+
+def uks_fxc_pot_with_eff_bra_trans(
+    den_type: str,
+    fxc_eff: np.ndarray,
+    rho1: np.ndarray,
+    ao: np.ndarray,
+    weights: np.ndarray,
+    bra: np.ndarray,
+):
+    """Evaluate UKS XC potential (2nd order) with fxc_eff, with bra transformed.
+
+    Parameters
+    ----------
+    den_type : str
+        The type of electron density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+    fxc_eff : np.ndarray
+        The effective XC kernel, shape [2, nvar, 2, nvar, ngrids].
+    rho1 : np.ndarray
+        The first-order density response, shape [nset, 2, nvar, ngrids].
+    ao : np.ndarray
+        The basis functions, shape [ncomp, nao, ngrids].
+    weights : np.ndarray
+        The integration weights, shape [ngrids].
+    bra : np.ndarray
+        The bra orbital coefficients, shape [nao, nocc].
+
+    Returns
+    -------
+    fxc : np.ndarray
+        The second-order XC potential (bra transformed), shape [nset, 2, nocc, nao].
+    """
+    nset, nspin, nvar, ngrids = rho1.shape
+    assert nspin == 2
+    assert fxc_eff.shape == (2, nvar, 2, nvar, ngrids)
+    assert weights.shape == (ngrids,)
+    assert num_nvar(den_type) == nvar
+    assert ao.ndim == 3
+    nao = ao.shape[1]
+    assert ao.shape[2] == ngrids
+    assert ao.shape[0] >= num_ao_comp(den_type)
+    assert bra.ndim == 2
+    assert bra.shape[0] == nao
+    nocc = bra.shape[1]
+
+    if den_type == "LAPL":
+        raise NotImplementedError
+
+    # Merge spin and var dims: [2, v0, 2, v1, g] -> [2, v0, 2*v1, g]
+    fxc_eff_reshape = fxc_eff.reshape(2, nvar, 2 * nvar, ngrids)
+    # [nset, 2, v1, g] -> [nset, 2*v1, g]
+    rho1_reshape = rho1.reshape(nset, 2 * nvar, ngrids)
+
+    ao_bra = bra.T @ ao
+
+    fxc = np.zeros((nset, 2, nocc, nao))
+    for i in range(nset):
+        for s in range(2):
+            fxc_contract = weights * (
+                fxc_eff_reshape[s] * rho1_reshape[i, None, :, :]
+            ).sum(axis=-2)
+            fxc[i, s] = contract_ao_wv_bra(den_type, fxc_contract, ao, ao_bra)
     return fxc

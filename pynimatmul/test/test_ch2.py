@@ -237,7 +237,9 @@ class TestXCPot(unittest.TestCase):
         _, exc, vxc = ni.nr_uks(mol, grids, "LDA_X", self.dm0)
         self.assertAlmostEqual(exc, -4.7040426008, places=6)
         self.assertAlmostEqual(lib.fp(vxc), -12.7427734694, places=6)
-        fxc = ni.nr_uks_fxc(mol, grids, "LDA_X", self.dm0, self.dm1.swapaxes(0, 1)).swapaxes(0, 1)
+        fxc = ni.nr_uks_fxc(
+            mol, grids, "LDA_X", self.dm0, self.dm1.swapaxes(0, 1)
+        ).swapaxes(0, 1)
         self.assertAlmostEqual(lib.fp(fxc), -0.2560478462754152, places=6)
         # test of current implementation
         # exc
@@ -262,8 +264,12 @@ class TestXCPot(unittest.TestCase):
         ngrids = coords.shape[0]
         shape_i, shape_o = [-1, nao, nao], [-1, 2, nvar, ngrids]
         rho0 = ni_obj.get_rho_from_dm(self.dm0, "SIGMA")
-        rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "SIGMA").reshape(shape_o)
-        rho2 = ni_obj.get_rho_from_dm(self.dm2.reshape(shape_i), "SIGMA").reshape(shape_o)
+        rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "SIGMA").reshape(
+            shape_o
+        )
+        rho2 = ni_obj.get_rho_from_dm(self.dm2.reshape(shape_i), "SIGMA").reshape(
+            shape_o
+        )
         exc_eff, vxc_eff, fxc_eff, kxc_eff = ni.eval_xc_eff(
             "GGA_X_PBE", rho0, deriv=3, spin=1
         )
@@ -271,7 +277,9 @@ class TestXCPot(unittest.TestCase):
         _, exc, vxc = ni.nr_uks(mol, grids, "GGA_X_PBE", self.dm0)
         self.assertAlmostEqual(exc, -5.2725625947, places=6)
         self.assertAlmostEqual(lib.fp(vxc), -13.134537099, places=6)
-        fxc = ni.nr_uks_fxc(mol, grids, "GGA_X_PBE", self.dm0, self.dm1.swapaxes(0, 1)).swapaxes(0, 1)
+        fxc = ni.nr_uks_fxc(
+            mol, grids, "GGA_X_PBE", self.dm0, self.dm1.swapaxes(0, 1)
+        ).swapaxes(0, 1)
         self.assertAlmostEqual(lib.fp(fxc), -0.13792205114629885, places=6)
         # test of current implementation
         # exc
@@ -305,7 +313,9 @@ class TestXCPot(unittest.TestCase):
         _, exc, vxc = ni.nr_uks(mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0)
         self.assertAlmostEqual(exc, -4.9638946892, places=6)
         self.assertAlmostEqual(lib.fp(vxc), -12.384391087, places=6)
-        fxc = ni.nr_uks_fxc(mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0, self.dm1.swapaxes(0, 1)).swapaxes(0, 1)
+        fxc = ni.nr_uks_fxc(
+            mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0, self.dm1.swapaxes(0, 1)
+        ).swapaxes(0, 1)
         self.assertAlmostEqual(lib.fp(fxc), 31.692895267010428, places=6)
         # test of current implementation
         # exc
@@ -323,3 +333,26 @@ class TestXCPot(unittest.TestCase):
         kxc_impl = ni_obj.get_kxc_pot_with_eff(kxc_eff, rho1, rho2, "TAU", spin=1)
         self.assertEqual(kxc_impl.shape, (9, 3, 2, nao, nao))
         self.assertAlmostEqual(lib.fp(kxc_impl), 6528.81912736829, places=6)
+
+    def test_tau_bra_trans(self):
+        nao = mo_coeff.shape[1]
+        nvar = num_nvar("TAU")
+        ngrids = coords.shape[0]
+        shape_i, shape_o = [-1, nao, nao], [-1, 2, nvar, ngrids]
+        rho0 = ni_obj.get_rho_from_dm(self.dm0, "TAU")
+        rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "TAU").reshape(shape_o)
+        _, _, fxc_eff, _ = ni.eval_xc_eff("HYB_MGGA_XC_TPSSH", rho0, deriv=2, spin=1)
+        occ_coeff = mo_coeff[0][:, mo_occ[0] > 0]
+        nocc = occ_coeff.shape[1]
+        # test of pyscf reference values
+        fxc_ref = ni.nr_uks_fxc(
+            mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0, self.dm1.swapaxes(0, 1)
+        ).swapaxes(0, 1)
+        fxc_bra_trans = occ_coeff.T @ fxc_ref
+        self.assertAlmostEqual(lib.fp(fxc_bra_trans), -1.6705510038499176, places=6)
+        # test of current implementation
+        fxc_impl = ni_obj.get_fxc_pot_with_eff_bra_trans(
+            fxc_eff, rho1, occ_coeff, "TAU", spin=1
+        )
+        self.assertEqual(fxc_impl.shape, (3, 2, nocc, nao))
+        self.assertAlmostEqual(lib.fp(fxc_impl), -1.6705510038499176, places=6)

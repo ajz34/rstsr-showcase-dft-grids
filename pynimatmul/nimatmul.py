@@ -18,6 +18,7 @@ from pynimatmul.pure_xcpot import (
     rks_kxc_pot_with_eff,
     rks_vxc_pot_with_eff,
     uks_fxc_pot_with_eff,
+    uks_fxc_pot_with_eff_bra_trans,
     uks_kxc_pot_with_eff,
     uks_vxc_pot_with_eff,
     rks_fxc_pot_with_eff_bra_trans,
@@ -168,19 +169,15 @@ class NIMatmul:
         self, vxc_eff: np.ndarray, den_type: str, spin: int
     ) -> np.ndarray:
         ao = self.get_cached_ao(num_ao_deriv(den_type))
-        if spin == 0:
-            return rks_vxc_pot_with_eff(den_type, vxc_eff, ao, self.weights)
-        else:
-            return uks_vxc_pot_with_eff(den_type, vxc_eff, ao, self.weights)
+        f = rks_vxc_pot_with_eff if spin == 0 else uks_vxc_pot_with_eff
+        return f(den_type, vxc_eff, ao, self.weights)
 
     def get_fxc_pot_with_eff(
         self, fxc_eff: np.ndarray, rho1: np.ndarray, den_type: str, spin: int
     ) -> np.ndarray:
         ao = self.get_cached_ao(num_ao_deriv(den_type))
-        if spin == 0:
-            return rks_fxc_pot_with_eff(den_type, fxc_eff, rho1, ao, self.weights)
-        else:
-            return uks_fxc_pot_with_eff(den_type, fxc_eff, rho1, ao, self.weights)
+        f = rks_fxc_pot_with_eff if spin == 0 else uks_fxc_pot_with_eff
+        return f(den_type, fxc_eff, rho1, ao, self.weights)
 
     def get_kxc_pot_with_eff(
         self,
@@ -191,10 +188,8 @@ class NIMatmul:
         spin: int,
     ) -> np.ndarray:
         ao = self.get_cached_ao(num_ao_deriv(den_type))
-        if spin == 0:
-            return rks_kxc_pot_with_eff(den_type, kxc_eff, rho1, rho2, ao, self.weights)
-        else:
-            return uks_kxc_pot_with_eff(den_type, kxc_eff, rho1, rho2, ao, self.weights)
+        f = rks_kxc_pot_with_eff if spin == 0 else uks_kxc_pot_with_eff
+        return f(den_type, kxc_eff, rho1, rho2, ao, self.weights)
 
     def get_fxc_pot_with_eff_bra_trans(
         self,
@@ -205,9 +200,9 @@ class NIMatmul:
         spin: int,
     ):
         ao = self.get_cached_ao(num_ao_deriv(den_type))
-        if spin == 0:
-            return rks_fxc_pot_with_eff_bra_trans(
-                den_type, fxc_eff, rho1, ao, self.weights, bra
-            )
-        else:
-            raise NotImplementedError
+        f = (
+            rks_fxc_pot_with_eff_bra_trans
+            if spin == 0
+            else uks_fxc_pot_with_eff_bra_trans
+        )
+        return f(den_type, fxc_eff, rho1, ao, self.weights, bra)
