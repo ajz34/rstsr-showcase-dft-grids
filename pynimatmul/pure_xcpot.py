@@ -328,3 +328,103 @@ def uks_kxc_pot_with_eff(
                 ).sum(axis=(-3, -2))
                 kxc[i2, i1, s] = contract_ao_wv(den_type, kxc_contract, ao)
     return kxc
+
+
+def contract_ao_wv_bra(den_type: str, wv: np.ndarray, ao: np.ndarray, ao_bra: np.ndarray) -> np.ndarray:
+    """Contract AO with wv for RHO/SIGMA/TAU.
+
+    Parameters
+    ----------
+    den_type : str
+        The type of density to compute. Can be "RHO", "SIGMA", or "TAU".
+    wv : np.ndarray
+        The weight vector, shape [nvar, ngrids].
+    ao : np.ndarray
+        The AO values, shape [ncomp, nao, ngrids].
+    ao_bra : np.ndarray
+        The bra-transformed AO values, shape [ncomp, nocc, ngrids].
+
+    Returns
+    -------
+    contracted : np.ndarray
+        The contracted AO, shape [nao, nao].
+    """
+    nvar, ngrids = wv.shape
+    assert num_nvar(den_type) == nvar
+    assert ao.ndim == 3
+    nao = ao.shape[1]
+    assert ao.shape[2] == ngrids
+    assert ao.shape[0] >= num_ao_comp(den_type)
+    assert ao_bra.ndim == 3
+    assert ao_bra.shape[2] == ngrids
+    assert ao_bra.shape[0] >= num_ao_comp(den_type)
+    nocc = ao_bra.shape[1]
+
+    contracted = np.zeros((nocc, nao))
+    # RHO contribution
+    contracted += ao_bra[0] * wv[0] @ ao[0].T
+    # SIGMA contribution
+    if den_type in ("SIGMA", "TAU"):
+        contracted += ao_bra[1] * wv[1] @ ao[0].T
+        contracted += ao_bra[2] * wv[2] @ ao[0].T
+        contracted += ao_bra[3] * wv[3] @ ao[0].T
+        contracted += ao_bra[0] * wv[1] @ ao[1].T
+        contracted += ao_bra[0] * wv[2] @ ao[2].T
+        contracted += ao_bra[0] * wv[3] @ ao[3].T
+    # TAU contribution
+    if den_type in ("TAU",):
+        contracted += 0.5 * ao_bra[1] * wv[4] @ ao[1].T
+        contracted += 0.5 * ao_bra[2] * wv[4] @ ao[2].T
+        contracted += 0.5 * ao_bra[3] * wv[4] @ ao[3].T
+    return contracted
+
+
+def rks_fxc_pot_with_eff_bra_trans(
+    den_type: str,
+    fxc_eff: np.ndarray,
+    rho1: np.ndarray,
+    ao: np.ndarray,
+    weights: np.ndarray,
+    bra: np.ndarray,
+):
+    r"""Evaluate XC potential (2nd order) with fxc_eff, with bra transformed.
+
+    Bra usually be occupied orbital coefficient (row-major applied to $\mu$), which can lower the computational cost.
+
+    Parameters
+    ----------
+    den_type : str
+        The type of electron density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+    fxc_eff : np.ndarray
+        The effective XC kernel, shape [nvar, nvar, ngrids].
+    rho1 : np.ndarray
+        The first-order density response, shape [nset, nvar, ngrids].
+    ao : np.ndarray
+        The basis functions, shape [ncomp, nao, ngrids].
+    weights : np.ndarray
+        The integration weights, shape [ngrids].
+    bra : np.ndarray
+        The bra orbital coefficients, shape [nao, nocc].
+
+    Returns
+    -------
+    fxc : np.ndarray
+        The second-order XC potential (bra transformed), shape [nset, nocc, nao].
+    """
+    nset, nvar, ngrids = rho1.shape
+    assert fxc_eff.shape == (nvar, nvar, ngrids)
+    assert weights.shape == (ngrids,)
+    assert ao.ndim == 3
+    nao = ao.shape[1]
+    assert ao.shape[2] == ngrids
+    assert ao.shape[0] >= num_ao_comp(den_type)
+    assert bra.ndim == 2
+    assert bra.shape[0] == nao
+    nocc = bra.shape[1]
+
+    fxc = np.zeros((nset, nocc, nao))
+    ao_bra = bra.T @ ao
+    for i in range(nset):
+        fxc_contract = weights * (fxc_eff * rho1[i, None, :, :]).sum(axis=-2)
+        fxc[i] = contract_ao_wv_bra(den_type, fxc_contract, ao, ao_bra)
+    return fxc

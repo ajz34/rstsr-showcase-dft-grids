@@ -6,7 +6,7 @@ This implementation uses naive BLAS-3 and not optimized.
 
 from pyscf import gto, dft
 import numpy as np
-from pynimatmul.flags import num_ao_deriv, num_nvar, num_ao_comp
+from pynimatmul.flags import num_ao_deriv, num_nvar
 from pynimatmul.pure_eval_rho import (
     get_rho_from_dm_with_output,
     get_rho_from_homogeneous_braket_with_output,
@@ -20,6 +20,7 @@ from pynimatmul.pure_xcpot import (
     uks_fxc_pot_with_eff,
     uks_kxc_pot_with_eff,
     uks_vxc_pot_with_eff,
+    rks_fxc_pot_with_eff_bra_trans,
 )
 
 
@@ -194,3 +195,19 @@ class NIMatmul:
             return rks_kxc_pot_with_eff(den_type, kxc_eff, rho1, rho2, ao, self.weights)
         else:
             return uks_kxc_pot_with_eff(den_type, kxc_eff, rho1, rho2, ao, self.weights)
+
+    def get_fxc_pot_with_eff_bra_trans(
+        self,
+        fxc_eff: np.ndarray,
+        rho1: np.ndarray,
+        bra: np.ndarray,
+        den_type: str,
+        spin: int,
+    ):
+        ao = self.get_cached_ao(num_ao_deriv(den_type))
+        if spin == 0:
+            return rks_fxc_pot_with_eff_bra_trans(
+                den_type, fxc_eff, rho1, ao, self.weights, bra
+            )
+        else:
+            raise NotImplementedError

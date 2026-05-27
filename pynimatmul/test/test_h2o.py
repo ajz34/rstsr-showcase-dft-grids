@@ -211,3 +211,19 @@ class TestXCPot(unittest.TestCase):
         kxc = ni_obj.get_kxc_pot_with_eff(kxc_eff, rho1, rho2, "TAU", spin=0)
         self.assertEqual(kxc.shape, (9, 3, nao, nao))
         self.assertAlmostEqual(lib.fp(kxc), 0.5466595210064285, places=6)
+
+    def test_tau_bra_trans(self):
+        # setup
+        rho0 = ni_obj.get_rho_from_dm([self.dm0], "TAU")[0]
+        rho1 = ni_obj.get_rho_from_dm(self.dm1, "TAU")
+        _, _, fxc_eff, _ = ni.eval_xc_eff("HYB_MGGA_XC_TPSSH", rho0, deriv=2)
+        occ_coeff = mo_coeff[:, mo_occ > 0]
+        # test of pyscf reference values
+        fxc = ni.nr_rks_fxc(mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0, self.dm1)
+        fxc_bra_trans = occ_coeff.T @ fxc
+        self.assertAlmostEqual(lib.fp(fxc_bra_trans), 0.11104650048770713, places=6)
+        # test of current implementation
+        fxc_bra_trans = ni_obj.get_fxc_pot_with_eff_bra_trans(
+            fxc_eff, rho1, occ_coeff, "TAU", spin=0
+        )
+        self.assertAlmostEqual(lib.fp(fxc_bra_trans), 0.11104650048770713, places=6)
