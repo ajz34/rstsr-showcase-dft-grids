@@ -342,17 +342,17 @@ class TestXCPot(unittest.TestCase):
         rho0 = ni_obj.get_rho_from_dm(self.dm0, "TAU")
         rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "TAU").reshape(shape_o)
         _, _, fxc_eff, _ = ni.eval_xc_eff("HYB_MGGA_XC_TPSSH", rho0, deriv=2, spin=1)
-        occ_coeff = mo_coeff[0][:, mo_occ[0] > 0]
-        nocc = occ_coeff.shape[1]
+        occ_coeff = [mo_coeff[s][:, mo_occ[s] > 0] for s in range(2)]
         # test of pyscf reference values
         fxc_ref = ni.nr_uks_fxc(
             mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0, self.dm1.swapaxes(0, 1)
         ).swapaxes(0, 1)
-        fxc_bra_trans = occ_coeff.T @ fxc_ref
-        self.assertAlmostEqual(lib.fp(fxc_bra_trans), -1.6705510038499176, places=6)
+        fxc_bra_trans = [occ_coeff[s].T @ fxc_ref[:, s] for s in range(2)]
+        self.assertAlmostEqual(lib.fp(fxc_bra_trans[0]), 0.07646866826480496, places=6)
+        self.assertAlmostEqual(lib.fp(fxc_bra_trans[1]), 0.01717215515438316, places=6)
         # test of current implementation
         fxc_impl = ni_obj.get_fxc_pot_with_eff_bra_trans(
             fxc_eff, rho1, occ_coeff, "TAU", spin=1
         )
-        self.assertEqual(fxc_impl.shape, (3, 2, nocc, nao))
-        self.assertAlmostEqual(lib.fp(fxc_impl), -1.6705510038499176, places=6)
+        self.assertAlmostEqual(lib.fp(fxc_impl[0]), 0.07646866826480496, places=6)
+        self.assertAlmostEqual(lib.fp(fxc_impl[1]), 0.01717215515438316, places=6)

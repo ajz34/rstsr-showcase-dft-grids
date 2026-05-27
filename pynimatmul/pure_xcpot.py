@@ -438,7 +438,7 @@ def uks_fxc_pot_with_eff_bra_trans(
     rho1: np.ndarray,
     ao: np.ndarray,
     weights: np.ndarray,
-    bra: np.ndarray,
+    bra: list[np.ndarray],
 ):
     """Evaluate UKS XC potential (2nd order) with fxc_eff, with bra transformed.
 
@@ -454,13 +454,13 @@ def uks_fxc_pot_with_eff_bra_trans(
         The basis functions, shape [ncomp, nao, ngrids].
     weights : np.ndarray
         The integration weights, shape [ngrids].
-    bra : np.ndarray
-        The bra orbital coefficients, shape [nao, nocc].
+    bra : list[np.ndarray]
+        The bra orbital coefficients, shape [nao, nocc_alpha] and [nao, nocc_beta].
 
     Returns
     -------
-    fxc : np.ndarray
-        The second-order XC potential (bra transformed), shape [nset, 2, nocc, nao].
+    fxc : list[np.ndarray]
+        The second-order XC potential (bra transformed), shape [nset, nocc_alpha, nao] and [nset, nocc_beta, nao].
     """
     nset, nspin, nvar, ngrids = rho1.shape
     assert nspin == 2
@@ -471,9 +471,11 @@ def uks_fxc_pot_with_eff_bra_trans(
     nao = ao.shape[1]
     assert ao.shape[2] == ngrids
     assert ao.shape[0] >= num_ao_comp(den_type)
-    assert bra.ndim == 2
-    assert bra.shape[0] == nao
-    nocc = bra.shape[1]
+    assert len(bra) == 2
+    for s in range(2):
+        assert bra[s].ndim == 2
+        assert bra[s].shape[0] == nao
+    nocc = [bra[s].shape[1] for s in range(2)]
 
     if den_type == "LAPL":
         raise NotImplementedError
@@ -483,13 +485,13 @@ def uks_fxc_pot_with_eff_bra_trans(
     # [nset, 2, v1, g] -> [nset, 2*v1, g]
     rho1_reshape = rho1.reshape(nset, 2 * nvar, ngrids)
 
-    ao_bra = bra.T @ ao
+    ao_bra = [bra[s].T @ ao for s in range(2)]
 
-    fxc = np.zeros((nset, 2, nocc, nao))
+    fxc = [np.zeros((nset, nocc[s], nao)) for s in range(2)]
     for i in range(nset):
         for s in range(2):
             fxc_contract = weights * (
                 fxc_eff_reshape[s] * rho1_reshape[i, None, :, :]
             ).sum(axis=-2)
-            fxc[i, s] = contract_ao_wv_bra(den_type, fxc_contract, ao, ao_bra)
+            fxc[s][i] = contract_ao_wv_bra(den_type, fxc_contract, ao, ao_bra[s])
     return fxc
