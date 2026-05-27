@@ -157,8 +157,7 @@ impl<'a> NIMatMul<'a> {
 
         if spin == 0 {
             let mut out = rt::zeros(([nao, nao], &device));
-            let mut buf = vec![0.0; weights_data.len() * nao];
-            rks_vxc_pot_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
+            rks_vxc_pot_with_output_parenh(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         } else {
             let mut out = rt::zeros(([nao, nao, 2], &device));
