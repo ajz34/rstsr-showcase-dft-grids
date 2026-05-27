@@ -75,7 +75,7 @@ fn test_h2o_xcpot() {
     let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), SIGMA, 0).unwrap();
     let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), SIGMA, 0).unwrap();
     let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), SIGMA, 0).unwrap();
-    println!("SIGMA make_vxc_pot_with_eff time: {:?}", time.elapsed());
+    println!("SIGMA make_?xc_pot_with_eff time: {:?}", time.elapsed());
 
     assert!((exc - -8.9542650216).abs() < 1e-6);
     assert!((fp(vxc.view()) - -28.6270372279).abs() < 1e-6);
@@ -100,7 +100,7 @@ fn test_h2o_xcpot() {
     let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), TAU, 0).unwrap();
     let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, 0).unwrap();
     let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), TAU, 0).unwrap();
-    println!("TAU make_vxc_pot_with_eff time: {:?}", time.elapsed());
+    println!("TAU make_?xc_pot_with_eff time: {:?}", time.elapsed());
 
     assert!((exc - -8.4667246286).abs() < 1e-6);
     assert!((fp(vxc.view()) - -26.3517912584).abs() < 1e-6);

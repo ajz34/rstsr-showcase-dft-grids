@@ -264,3 +264,435 @@ pub fn rks_fxc_pot_with_output_parenh(
     }
     Ok(())
 }
+
+/// Evaluate XC potential (3rd order, RKS) with kxc_eff (parallel enhanced).
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `kxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar, nvar]`
+/// - `rho1` : first-order density response, shape `[ngrids, nvar, nset1]`
+/// - `rho2` : second-order density response, shape `[ngrids, nvar, nset2]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `weights` : grid weights, shape `[ngrids]`
+/// - `kxc` : output kxc, shape `[nao, nao, nset1, nset2]`
+#[allow(clippy::too_many_arguments)]
+pub fn rks_kxc_pot_with_output_parenh(
+    den_type: NIDenType,
+    kxc_eff: TsrView,
+    rho1: TsrView,
+    rho2: TsrView,
+    ao: TsrView,
+    weights: TsrView,
+    mut kxc: TsrMut,
+) -> Result<(), NIError> {
+    ni_check_shape!(rho1.ndim(), 3, "rho1 tensor must be 3-dim")?;
+    ni_check_shape!(rho2.ndim(), 3, "rho2 tensor must be 3-dim")?;
+    let nset1 = rho1.shape()[2];
+    let nset2 = rho2.shape()[2];
+    let nvar = rho1.shape()[1];
+    let ngrids = rho1.shape()[0];
+    ni_check_shape!(kxc_eff.shape(), [ngrids, nvar, nvar, nvar], "kxc_eff shape mismatch")?;
+    ni_check_shape!(rho2.shape()[0..2], [ngrids, nvar], "rho2 shape mismatch")?;
+    ni_check_shape!(weights.shape(), [ngrids], "Weights shape mismatch")?;
+    ni_check_shape!(den_type.num_nvar(), nvar, "Dimension mismatch for input density type")?;
+    ni_check_shape!(ao.ndim(), 3, "AO tensor must be 3-dim")?;
+    ni_check_shape!(ao.shape()[0], ngrids, "AO grids dimension mismatch")?;
+    ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+    let nao = ao.shape()[1];
+    ni_check_shape!(kxc.shape(), [nao, nao, nset1, nset2], "Output shape mismatch")?;
+
+    if den_type == LAPL {
+        return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
+    }
+
+    // kxc_eff contraction
+    let kxc_eff_weighted = &weights * &kxc_eff;
+
+    // buffer pool initialization
+    const NGRIDS_CHUNK: usize = 384;
+    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_pool = BufferPool::new(buffer_init);
+    let vxc_init = || vec![0.0; nao * nao];
+    let vxc_pool = BufferPool::new(vxc_init);
+
+    // task numbers
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_i = nset1 * nset2;
+    let ntask = ntask_grid * ntask_i;
+
+    // atomic guard to avoid racing write
+    let guard = (0..ntask_i).map(|_| Mutex::new(())).collect_vec();
+
+    (0..ntask).into_par_iter().try_for_each(|itask| {
+        // determine task configuration
+        let j = itask % ntask_i;
+        let i1 = j % nset1;
+        let i2 = j / nset1;
+        let igrid = itask / ntask_i;
+
+        // determine the grid chunk for this task
+        let start = igrid * NGRIDS_CHUNK;
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+
+        // get buffer from pool
+        let mut buf = buffer_pool.get();
+        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+
+        // perform actual evaluation
+        let rho1_chunk = rho1.i((start..end, .., None, i1));
+        let rho2_chunk = rho2.i((start..end, .., None, i2));
+        let kxc_eff_weighted_chunk = kxc_eff_weighted.i(start..end);
+        // Two-step contraction: first with rho1, then with rho2
+        let temp = (&kxc_eff_weighted_chunk * rho1_chunk).sum_axes(1);
+        let kxc_contracted_chunk = (&temp * rho2_chunk).sum_axes(1);
+        let ao_chunk = ao.i(start..end);
+        contract_ao_wv_without_symmetrize(
+            den_type,
+            kxc_contracted_chunk.view(),
+            ao_chunk.view(),
+            vxc_local.view_mut(),
+            &mut buf,
+        )?;
+
+        // write back with lock
+        let lock = guard[j].lock().unwrap();
+        let mut kxc = unsafe { kxc.force_mut() };
+        *&mut kxc.i_mut((.., .., i1, i2)) += &vxc_local;
+        drop(lock);
+
+        // return buffer to pool
+        buffer_pool.put(buf);
+        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        Ok(())
+    })?;
+
+    // finally symmetrize the output
+    let mut kxc_buf: Tsr = rt::zeros(([nao, nao], kxc.device()));
+    for i2 in 0..nset2 {
+        for i1 in 0..nset1 {
+            kxc_buf.assign(&kxc.i((.., .., i1, i2)).t());
+            *&mut kxc.i_mut((.., .., i1, i2)) += &kxc_buf;
+        }
+    }
+    Ok(())
+}
+
+/// Evaluate XC potential (1st order, UKS) with vxc_eff (parallel enhanced).
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `vxc_eff` : effective XC potential, shape `[ngrids, nvar, 2]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `weights` : grid weights, shape `[ngrids]`
+/// - `vxc` : output vxc, shape `[nao, nao, 2]`
+pub fn uks_vxc_pot_with_output_parenh(
+    den_type: NIDenType,
+    vxc_eff: TsrView,
+    ao: TsrView,
+    weights: TsrView,
+    mut vxc: TsrMut,
+) -> Result<(), NIError> {
+    ni_check_shape!(vxc_eff.ndim(), 3, "Effective potential must be 3-dim")?;
+    let nvar = vxc_eff.shape()[1];
+    let ngrids = vxc_eff.shape()[0];
+    ni_check_shape!(vxc_eff.shape()[2], 2, "vxc_eff must have 2 spin channels")?;
+    ni_check_shape!(weights.shape(), [ngrids], "Weights shape mismatch")?;
+    ni_check_shape!(den_type.num_nvar(), nvar, "Dimension mismatch for input density type")?;
+    ni_check_shape!(ao.ndim(), 3, "AO tensor must be 3-dim")?;
+    ni_check_shape!(ao.shape()[0], ngrids, "AO grids dimension mismatch")?;
+    ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+    let nao = ao.shape()[1];
+    ni_check_shape!(vxc.shape(), [nao, nao, 2], "Output shape mismatch")?;
+
+    if den_type == LAPL {
+        return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
+    }
+
+    // vxc_eff contraction
+    let vxc_eff_weighted = &weights * &vxc_eff;
+
+    // buffer pool initialization
+    const NGRIDS_CHUNK: usize = 384;
+    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_pool = BufferPool::new(buffer_init);
+    let vxc_init = || vec![0.0; nao * nao];
+    let vxc_pool = BufferPool::new(vxc_init);
+
+    // task numbers
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_i = 2;
+    let ntask = ntask_grid * ntask_i;
+
+    // atomic guard to avoid racing write
+    let guard = (0..ntask_i).map(|_| Mutex::new(())).collect_vec();
+
+    (0..ntask).into_par_iter().try_for_each(|itask| {
+        // determine task configuration
+        let s = itask % ntask_i;
+        let igrid = itask / ntask_i;
+
+        // determine the grid chunk for this task
+        let start = igrid * NGRIDS_CHUNK;
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+
+        // get buffer from pool
+        let mut buf = buffer_pool.get();
+        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+
+        // perform actual evaluation
+        let vxc_contracted_chunk = vxc_eff_weighted.i((start..end, .., s));
+        let ao_chunk = ao.i(start..end);
+        contract_ao_wv_without_symmetrize(
+            den_type,
+            vxc_contracted_chunk.view(),
+            ao_chunk.view(),
+            vxc_local.view_mut(),
+            &mut buf,
+        )?;
+
+        // write back with lock
+        let lock = guard[s].lock().unwrap();
+        let mut vxc = unsafe { vxc.force_mut() };
+        *&mut vxc.i_mut((.., .., s)) += &vxc_local;
+        drop(lock);
+
+        // return buffer to pool
+        buffer_pool.put(buf);
+        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        Ok(())
+    })?;
+
+    // finally symmetrize the output
+    let mut vxc_buf: Tsr = rt::zeros(([nao, nao], vxc.device()));
+    for s in 0..2 {
+        vxc_buf.assign(&vxc.i((.., .., s)).t());
+        *&mut vxc.i_mut((.., .., s)) += &vxc_buf;
+    }
+    Ok(())
+}
+
+/// Evaluate XC potential (2nd order, UKS) with fxc_eff (parallel enhanced).
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, 2, nvar, 2]`
+/// - `rho1` : first-order density response, shape `[ngrids, nvar, 2, nset]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `weights` : grid weights, shape `[ngrids]`
+/// - `fxc` : output fxc, shape `[nao, nao, 2, nset]`
+pub fn uks_fxc_pot_with_output_parenh(
+    den_type: NIDenType,
+    fxc_eff: TsrView,
+    rho1: TsrView,
+    ao: TsrView,
+    weights: TsrView,
+    mut fxc: TsrMut,
+) -> Result<(), NIError> {
+    ni_check_shape!(rho1.ndim(), 4, "rho1 tensor must be 4-dim")?;
+    let nset = rho1.shape()[3];
+    let nvar = rho1.shape()[1];
+    let ngrids = rho1.shape()[0];
+    ni_check_shape!(rho1.shape()[2], 2, "rho1 must have 2 spin channels")?;
+    ni_check_shape!(fxc_eff.shape(), [ngrids, nvar, 2, nvar, 2], "fxc_eff shape mismatch")?;
+    ni_check_shape!(weights.shape(), [ngrids], "Weights shape mismatch")?;
+    ni_check_shape!(den_type.num_nvar(), nvar, "Dimension mismatch for input density type")?;
+    ni_check_shape!(ao.ndim(), 3, "AO tensor must be 3-dim")?;
+    ni_check_shape!(ao.shape()[0], ngrids, "AO grids dimension mismatch")?;
+    ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+    let nao = ao.shape()[1];
+    ni_check_shape!(fxc.shape(), [nao, nao, 2, nset], "Output shape mismatch")?;
+
+    if den_type == LAPL {
+        return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
+    }
+
+    // fxc_eff contraction
+    let fxc_eff_weighted = &weights * &fxc_eff;
+
+    // buffer pool initialization
+    const NGRIDS_CHUNK: usize = 384;
+    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_pool = BufferPool::new(buffer_init);
+    let vxc_init = || vec![0.0; nao * nao];
+    let vxc_pool = BufferPool::new(vxc_init);
+
+    // task numbers
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_i = 2 * nset;
+    let ntask = ntask_grid * ntask_i;
+
+    // atomic guard to avoid racing write
+    let guard = (0..ntask_i).map(|_| Mutex::new(())).collect_vec();
+
+    (0..ntask).into_par_iter().try_for_each(|itask| {
+        // determine task configuration
+        let j = itask % ntask_i;
+        let s = j % 2;
+        let i = j / 2;
+        let igrid = itask / ntask_i;
+
+        // determine the grid chunk for this task
+        let start = igrid * NGRIDS_CHUNK;
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+
+        // get buffer from pool
+        let mut buf = buffer_pool.get();
+        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+
+        // perform actual evaluation
+        let rho1_chunk = rho1.i((start..end, .., .., None, i));
+        let fxc_eff_weighted_chunk = fxc_eff_weighted.i(start..end);
+        // Contract over the inner spin+var pair (axes 1 and 2)
+        let fxc_contracted_chunk = (&fxc_eff_weighted_chunk.i((.., .., .., .., s)) * rho1_chunk).sum_axes([1, 2]);
+        let ao_chunk = ao.i(start..end);
+        contract_ao_wv_without_symmetrize(
+            den_type,
+            fxc_contracted_chunk.view(),
+            ao_chunk.view(),
+            vxc_local.view_mut(),
+            &mut buf,
+        )?;
+
+        // write back with lock
+        let lock = guard[j].lock().unwrap();
+        let mut fxc = unsafe { fxc.force_mut() };
+        *&mut fxc.i_mut((.., .., s, i)) += &vxc_local;
+        drop(lock);
+
+        // return buffer to pool
+        buffer_pool.put(buf);
+        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        Ok(())
+    })?;
+
+    // finally symmetrize the output
+    let mut fxc_buf: Tsr = rt::zeros(([nao, nao], fxc.device()));
+    for i in 0..nset {
+        for s in 0..2 {
+            fxc_buf.assign(&fxc.i((.., .., s, i)).t());
+            *&mut fxc.i_mut((.., .., s, i)) += &fxc_buf;
+        }
+    }
+    Ok(())
+}
+
+/// Evaluate XC potential (3rd order, UKS) with kxc_eff (parallel enhanced).
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `kxc_eff` : effective XC kernel, shape `[ngrids, nvar, 2, nvar, 2, nvar, 2]`
+/// - `rho1` : first-order density response, shape `[ngrids, nvar, 2, nset1]`
+/// - `rho2` : second-order density response, shape `[ngrids, nvar, 2, nset2]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `weights` : grid weights, shape `[ngrids]`
+/// - `kxc` : output kxc, shape `[nao, nao, 2, nset1, nset2]`
+#[allow(clippy::too_many_arguments)]
+pub fn uks_kxc_pot_with_output_parenh(
+    den_type: NIDenType,
+    kxc_eff: TsrView,
+    rho1: TsrView,
+    rho2: TsrView,
+    ao: TsrView,
+    weights: TsrView,
+    mut kxc: TsrMut,
+) -> Result<(), NIError> {
+    ni_check_shape!(rho1.ndim(), 4, "rho1 tensor must be 4-dim")?;
+    ni_check_shape!(rho2.ndim(), 4, "rho2 tensor must be 4-dim")?;
+    let nset1 = rho1.shape()[3];
+    let nset2 = rho2.shape()[3];
+    let nvar = rho1.shape()[1];
+    let ngrids = rho1.shape()[0];
+    ni_check_shape!(rho1.shape()[2], 2, "rho1 must have 2 spin channels")?;
+    ni_check_shape!(rho2.shape()[0..3], [ngrids, nvar, 2], "rho2 shape mismatch")?;
+    ni_check_shape!(kxc_eff.shape(), [ngrids, nvar, 2, nvar, 2, nvar, 2], "kxc_eff shape mismatch")?;
+    ni_check_shape!(weights.shape(), [ngrids], "Weights shape mismatch")?;
+    ni_check_shape!(den_type.num_nvar(), nvar, "Dimension mismatch for input density type")?;
+    ni_check_shape!(ao.ndim(), 3, "AO tensor must be 3-dim")?;
+    ni_check_shape!(ao.shape()[0], ngrids, "AO grids dimension mismatch")?;
+    ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+    let nao = ao.shape()[1];
+    ni_check_shape!(kxc.shape(), [nao, nao, 2, nset1, nset2], "Output shape mismatch")?;
+
+    if den_type == LAPL {
+        return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
+    }
+
+    // kxc_eff contraction
+    let kxc_eff_weighted = &weights * &kxc_eff;
+
+    // buffer pool initialization
+    const NGRIDS_CHUNK: usize = 384;
+    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_pool = BufferPool::new(buffer_init);
+    let vxc_init = || vec![0.0; nao * nao];
+    let vxc_pool = BufferPool::new(vxc_init);
+
+    // task numbers
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_i = 2 * nset1 * nset2;
+    let ntask = ntask_grid * ntask_i;
+
+    // atomic guard to avoid racing write
+    let guard = (0..ntask_i).map(|_| Mutex::new(())).collect_vec();
+
+    (0..ntask).into_par_iter().try_for_each(|itask| {
+        // determine task configuration
+        let j = itask % ntask_i;
+        let s = j % 2;
+        let i1 = (j / 2) % nset1;
+        let i2 = (j / 2) / nset1;
+        let igrid = itask / ntask_i;
+
+        // determine the grid chunk for this task
+        let start = igrid * NGRIDS_CHUNK;
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+
+        // get buffer from pool
+        let mut buf = buffer_pool.get();
+        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+
+        // perform actual evaluation
+        let rho1_chunk = rho1.i((start..end, .., .., None, None, None, i1));
+        let rho2_chunk = rho2.i((start..end, .., .., None, i2));
+        let kxc_eff_weighted_chunk = kxc_eff_weighted.i(start..end);
+        // Two-step contraction for UKS kxc
+        let kxc_slice = kxc_eff_weighted_chunk.i((.., .., .., .., .., .., s));
+        let temp = (&kxc_slice * rho1_chunk).sum_axes([1, 2]);
+        let kxc_contracted_chunk = (&temp * rho2_chunk).sum_axes([1, 2]);
+        let ao_chunk = ao.i(start..end);
+        contract_ao_wv_without_symmetrize(
+            den_type,
+            kxc_contracted_chunk.view(),
+            ao_chunk.view(),
+            vxc_local.view_mut(),
+            &mut buf,
+        )?;
+
+        // write back with lock
+        let lock = guard[j].lock().unwrap();
+        let mut kxc = unsafe { kxc.force_mut() };
+        *&mut kxc.i_mut((.., .., s, i1, i2)) += &vxc_local;
+        drop(lock);
+
+        // return buffer to pool
+        buffer_pool.put(buf);
+        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        Ok(())
+    })?;
+
+    // finally symmetrize the output
+    let mut kxc_buf: Tsr = rt::zeros(([nao, nao], kxc.device()));
+    for i2 in 0..nset2 {
+        for i1 in 0..nset1 {
+            for s in 0..2 {
+                kxc_buf.assign(&kxc.i((.., .., s, i1, i2)).t());
+                *&mut kxc.i_mut((.., .., s, i1, i2)) += &kxc_buf;
+            }
+        }
+    }
+    Ok(())
+}
