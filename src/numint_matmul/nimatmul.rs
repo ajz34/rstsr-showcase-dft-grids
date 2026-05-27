@@ -1,5 +1,12 @@
 use super::prelude::*;
 
+pub struct NIMatMul<'a> {
+    pub cint: CInt,
+    pub coords: Vec<[f64; 3]>,
+    pub weights: Vec<f64>,
+    pub cache_tensor: HashMap<String, TsrCow<'a, f64>>,
+}
+
 impl<'a> NIMatMul<'a> {
     pub fn new(cint: &CInt, coords: &[[f64; 3]], weights: &[f64]) -> Self {
         assert!(coords.len() == weights.len(), "Number of coordinates must match number of weights");
@@ -208,36 +215,15 @@ impl<'a> NIMatMul<'a> {
             let nset2 = rho2.shape()[2];
             let mut out = rt::zeros(([nao, nao, nset1, nset2], &device));
             let mut buf = vec![0.0; weights_data.len() * nao];
-            rks_kxc_pot_with_output(
-                den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), &mut buf,
-            )?;
+            rks_kxc_pot_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
             Ok(out)
         } else {
             let nset1 = rho1.shape()[3];
             let nset2 = rho2.shape()[3];
             let mut out = rt::zeros(([nao, nao, 2, nset1, nset2], &device));
             let mut buf = vec![0.0; weights_data.len() * nao];
-            uks_kxc_pot_with_output(
-                den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), &mut buf,
-            )?;
+            uks_kxc_pot_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
             Ok(out)
         }
     }
-}
-
-#[test]
-fn playground() {
-    let toml_str = r#"
-        atom = "O; H 1 0.94; H 1 0.94 2 104.5"
-        basis = "def2-TZVP"
-    "#;
-    let cint_mol = CIntMol::from_toml(toml_str);
-    let ngrids = 10;
-    let coords = (0..ngrids).map(|i| [(i as f64).sin(), (i as f64).cos(), (i as f64).tanh()]).collect::<Vec<_>>();
-    let weights = (0..ngrids).map(|i| (i as f64).sin().abs()).collect::<Vec<_>>();
-    let ni_obj = NIMatMul::new(&cint_mol.cint, &coords, &weights);
-    let gto_eval = ni_obj.prepare_ao(1);
-    println!("GTO evaluation result: {:10.5?}", gto_eval);
-    let gto_eval = ni_obj.prepare_ao(0);
-    println!("GTO evaluation result: {:10.5?}", gto_eval);
 }

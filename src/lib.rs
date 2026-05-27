@@ -13,7 +13,7 @@ pub mod prelude {
     pub use crate::{ni_check_shape, ni_error};
     pub use error::*;
     pub use flags::*;
-    pub use numint_matmul::structs::*;
+    pub use numint_matmul::nimatmul::*;
     pub use xceff::libxc_wrap::*;
 
     pub(crate) use NIDenType::*;
