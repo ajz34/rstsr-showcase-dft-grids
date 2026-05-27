@@ -40,6 +40,12 @@ impl NIIntoUsizeVec for Vec<usize> {
     }
 }
 
+impl NIIntoUsizeVec for &Vec<usize> {
+    fn into_usize_vec(self) -> Vec<usize> {
+        self.clone()
+    }
+}
+
 #[macro_export]
 macro_rules! ni_check_shape {
     ($actual:expr, $expected:expr, $msg:expr) => {{

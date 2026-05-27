@@ -135,6 +135,52 @@ impl<'a> NIMatMul<'a> {
         get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out.view_mut(), &mut buf)?;
         Ok(out)
     }
+
+    pub fn make_vxc_pot_with_eff(
+        &mut self,
+        vxc_eff: TsrView,
+        den_type: NIDenType,
+        spin: usize,
+    ) -> Result<Tsr, NIError> {
+        let weights_data = self.weights.clone();
+        let ao = self.get_cached_ao(den_type.num_ao_deriv());
+        let nao = ao.shape()[1];
+        let device = ao.device().clone();
+        let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
+
+        if spin == 0 {
+            let mut out = rt::zeros(([nao, nao], &device));
+            let mut buf = vec![0.0; weights_data.len() * nao];
+            rks_vxc_pot_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
+            Ok(out)
+        } else {
+            todo!()
+        }
+    }
+
+    pub fn make_fxc_pot_with_eff(
+        &mut self,
+        fxc_eff: TsrView,
+        rho1: TsrView,
+        den_type: NIDenType,
+        spin: usize,
+    ) -> Result<Tsr, NIError> {
+        let weights_data = self.weights.clone();
+        let ao = self.get_cached_ao(den_type.num_ao_deriv());
+        let nao = ao.shape()[1];
+        let device = ao.device().clone();
+        let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
+
+        if spin == 0 {
+            let nset = rho1.shape()[2];
+            let mut out = rt::zeros(([nao, nao, nset], &device));
+            let mut buf = vec![0.0; weights_data.len() * nao];
+            rks_fxc_pot_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
+            Ok(out)
+        } else {
+            todo!()
+        }
+    }
 }
 
 #[test]

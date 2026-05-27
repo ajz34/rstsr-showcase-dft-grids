@@ -3,6 +3,7 @@
 
 pub mod impls;
 pub mod pure_eval_rho;
+pub mod pure_xcpot;
 pub mod structs;
 
 #[allow(unused)]
@@ -11,6 +12,7 @@ pub mod prelude {
 
     pub(crate) use super::impls::*;
     pub(crate) use super::pure_eval_rho::*;
+    pub(crate) use super::pure_xcpot::*;
     pub(crate) use super::structs::*;
 }
 
