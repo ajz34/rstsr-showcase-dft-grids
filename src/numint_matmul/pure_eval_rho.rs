@@ -15,12 +15,11 @@ use super::prelude::*;
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
 /// - `buf` : scratch buffer of length at least `ngrids * nao`
 #[doc = include_str!("docs/get_rho_from_dm_with_output.md")]
-pub fn get_rho_from_dm_with_output(
+pub fn get_rho_from_dm_with_output_naive(
     ao: TsrView,
     dm_list: &[TsrView],
     den_type: NIDenType,
     mut out: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     // ao: [ngrids, nao, ncomp]
     // dm_list: each element is [nao, nao]
@@ -38,9 +37,9 @@ pub fn get_rho_from_dm_with_output(
     let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrids, den_type.num_nvar(), nset], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
+    let buf = &mut vec![0.0; ngrids * nao];
     let mut scr = rt::asarray((buf, [ngrids, nao].f(), &device));
 
     for (iset, dm) in dm_list.iter().enumerate() {
@@ -88,12 +87,11 @@ pub fn get_rho_from_dm_with_output(
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
 /// - `buf` : scratch buffer of length at least `2 * ngrid * nocc_max`
 #[doc = include_str!("docs/get_rho_from_homogeneous_braket_with_output.md")]
-pub fn get_rho_from_homogeneous_braket_with_output(
+pub fn get_rho_from_homogeneous_braket_with_output_naive(
     ao: TsrView,
     bra_list: &[TsrView],
     den_type: NIDenType,
     mut out: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     // ao: [ngrids, nao, ncomp]
     // bra: [nao, nocc, nset]
@@ -114,8 +112,9 @@ pub fn get_rho_from_homogeneous_braket_with_output(
     let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= 2 * ngrid * nocc_max, "Buffer length insufficient")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+
+    let buf = &mut vec![0.0; 2 * ngrid * nocc_max];
 
     for (iset, bra) in bra_list.iter().enumerate() {
         let nocc = bra.shape()[1];
@@ -165,13 +164,12 @@ pub fn get_rho_from_homogeneous_braket_with_output(
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
 /// - `buf` : scratch buffer of length at least `3 * ngrid * nocc`
 #[doc = include_str!("docs/get_rho_from_one_bra_mult_ket_with_output.md")]
-pub fn get_rho_from_one_bra_mult_ket_with_output(
+pub fn get_rho_from_one_bra_mult_ket_with_output_naive(
     ao: TsrView,
     bra: TsrView,
     ket_list: &[TsrView],
     den_type: NIDenType,
     mut out: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     // ao: [ngrids, nao, ncomp]
     // bra: [nao, nocc]
@@ -195,8 +193,9 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
     let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= 3 * ngrid * nocc, "Buffer length insufficient")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+
+    let buf = &mut vec![0.0; 3 * ngrid * nocc];
 
     let (buf1, buf_rest) = buf.split_at_mut(ngrid * nocc);
     let (buf2, buf3) = buf_rest.split_at_mut(ngrid * nocc);
@@ -264,13 +263,12 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
 /// - `buf` : scratch buffer of length at least `3 * ngrid * nocc_max`
-pub fn get_rho_from_mult_bra_mult_ket_with_output(
+pub fn get_rho_from_mult_bra_mult_ket_with_output_naive(
     ao: TsrView,
     bra_list: &[TsrView],
     ket_list: &[TsrView],
     den_type: NIDenType,
     mut out: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     // ao: [ngrids, nao, ncomp]
     // bra_list: each [nao, nocc_i]
@@ -295,8 +293,9 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
     let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= 3 * ngrid * nocc_max, "Buffer length insufficient")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+
+    let buf = &mut vec![0.0; 3 * ngrid * nocc_max];
 
     for (iset, (bra, ket)) in bra_list.iter().zip(ket_list.iter()).enumerate() {
         let nocc = bra.shape()[1];
