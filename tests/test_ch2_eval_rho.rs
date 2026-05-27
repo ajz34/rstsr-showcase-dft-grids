@@ -193,3 +193,121 @@ mod test_get_rho_from_mult_bra_mult_ket {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// TestEvalRhoPure — naive vs optimized pure function comparison
+// ---------------------------------------------------------------------------
+
+mod test_eval_rho_pure {
+    use super::*;
+    use rstsr_showcase_dft_grids::numint_matmul::pure_eval_rho::{
+        get_rho_from_dm_with_output, get_rho_from_homogeneous_braket_with_output,
+        get_rho_from_mult_bra_mult_ket_with_output, get_rho_from_one_bra_mult_ket_with_output,
+    };
+    use rstsr_showcase_dft_grids::numint_matmul::pure_eval_rho_naive::{
+        get_rho_from_dm_with_output_naive, get_rho_from_homogeneous_braket_with_output_naive,
+        get_rho_from_mult_bra_mult_ket_with_output_naive,
+        get_rho_from_one_bra_mult_ket_with_output_naive,
+    };
+
+    fn create_out(ch2: &Ch2Molecule, den_type: NIDenType) -> Tsr {
+        let device = ch2.rdm1.device().clone();
+        rt::asarray((vec![0.0; ch2.ngrids * den_type.num_nvar() * 2], [ch2.ngrids, den_type.num_nvar(), 2], &device))
+    }
+
+    fn assert_match(a: &Tsr, b: &Tsr, label: &str, den_type: NIDenType) {
+        let diff = (a - b).abs().max();
+        assert!(diff < 1e-10, "{}: {:?} naive vs opt max diff = {:.3e}", label, den_type, diff);
+    }
+
+    // -- helpers ported from existing test modules (first-4-MOs for one/mult bra/ket) --
+
+    fn get_bra_ket(ch2: &Ch2Molecule) -> (Tsr, [Tsr; 2]) {
+        let bra = ch2.mo_coeff.i((0, .., ..4)).to_owned().into_contig(ColMajor);
+        let ket_a = ch2.mo_coeff.i((0, .., ..4)).to_owned().into_contig(ColMajor);
+        let ket_b = ch2.mo_coeff.i((1, .., ..4)).to_owned().into_contig(ColMajor);
+        (bra, [ket_a, ket_b])
+    }
+
+    fn get_bra_ket_lists(ch2: &Ch2Molecule) -> ([Tsr; 2], [Tsr; 2]) {
+        let bra_a = ch2.mo_coeff.i((0, .., ..4)).to_owned().into_contig(ColMajor);
+        let bra_b = ch2.mo_coeff.i((1, .., ..4)).to_owned().into_contig(ColMajor);
+        let ket_a = ch2.mo_coeff.i((0, .., ..4)).to_owned().into_contig(ColMajor);
+        let ket_b = ch2.mo_coeff.i((1, .., ..4)).to_owned().into_contig(ColMajor);
+        ([bra_a, bra_b], [ket_a, ket_b])
+    }
+
+    // -- tests --
+
+    #[rstest]
+    fn test_get_rho_from_dm_naive_vs_optimized(ch2: &Ch2Molecule) {
+        let ni_obj = ch2.build_ni_obj();
+        let ao = ni_obj.prepare_ao(2);
+        let dm_list = [ch2.rdm1.i((.., .., 0)), ch2.rdm1.i((.., .., 1))];
+        for den_type in [RHO, SIGMA, TAU, LAPL] {
+            let mut out_naive = create_out(ch2, den_type);
+            let mut out_opt = create_out(ch2, den_type);
+            get_rho_from_dm_with_output_naive(ao.view(), &dm_list, den_type, out_naive.view_mut()).unwrap();
+            get_rho_from_dm_with_output(ao.view(), &dm_list, den_type, out_opt.view_mut()).unwrap();
+            assert_match(&out_naive, &out_opt, "get_rho_from_dm", den_type);
+        }
+    }
+
+    #[rstest]
+    fn test_get_rho_from_homogeneous_braket_naive_vs_optimized(ch2: &Ch2Molecule) {
+        let ni_obj = ch2.build_ni_obj();
+        let ao = ni_obj.prepare_ao(2);
+        let bra_list = ch2.bra_list();
+        let bra_views = [bra_list[0].view(), bra_list[1].view()];
+        for den_type in [RHO, SIGMA, TAU, LAPL] {
+            let mut out_naive = create_out(ch2, den_type);
+            let mut out_opt = create_out(ch2, den_type);
+            get_rho_from_homogeneous_braket_with_output_naive(
+                ao.view(), &bra_views, den_type, out_naive.view_mut(),
+            ).unwrap();
+            get_rho_from_homogeneous_braket_with_output(
+                ao.view(), &bra_views, den_type, out_opt.view_mut(),
+            ).unwrap();
+            assert_match(&out_naive, &out_opt, "get_rho_from_homogeneous_braket", den_type);
+        }
+    }
+
+    #[rstest]
+    fn test_get_rho_from_one_bra_mult_ket_naive_vs_optimized(ch2: &Ch2Molecule) {
+        let ni_obj = ch2.build_ni_obj();
+        let ao = ni_obj.prepare_ao(2);
+        let (bra, ket_list) = get_bra_ket(ch2);
+        let ket_views = [ket_list[0].view(), ket_list[1].view()];
+        for den_type in [RHO, SIGMA, TAU, LAPL] {
+            let mut out_naive = create_out(ch2, den_type);
+            let mut out_opt = create_out(ch2, den_type);
+            get_rho_from_one_bra_mult_ket_with_output_naive(
+                ao.view(), bra.view(), &ket_views, den_type, out_naive.view_mut(),
+            ).unwrap();
+            get_rho_from_one_bra_mult_ket_with_output(
+                ao.view(), bra.view(), &ket_views, den_type, out_opt.view_mut(),
+            ).unwrap();
+            assert_match(&out_naive, &out_opt, "get_rho_from_one_bra_mult_ket", den_type);
+        }
+    }
+
+    #[rstest]
+    fn test_get_rho_from_mult_bra_mult_ket_naive_vs_optimized(ch2: &Ch2Molecule) {
+        let ni_obj = ch2.build_ni_obj();
+        let ao = ni_obj.prepare_ao(2);
+        let (bra_list, ket_list) = get_bra_ket_lists(ch2);
+        let bra_views = [bra_list[0].view(), bra_list[1].view()];
+        let ket_views = [ket_list[0].view(), ket_list[1].view()];
+        for den_type in [RHO, SIGMA, TAU, LAPL] {
+            let mut out_naive = create_out(ch2, den_type);
+            let mut out_opt = create_out(ch2, den_type);
+            get_rho_from_mult_bra_mult_ket_with_output_naive(
+                ao.view(), &bra_views, &ket_views, den_type, out_naive.view_mut(),
+            ).unwrap();
+            get_rho_from_mult_bra_mult_ket_with_output(
+                ao.view(), &bra_views, &ket_views, den_type, out_opt.view_mut(),
+            ).unwrap();
+            assert_match(&out_naive, &out_opt, "get_rho_from_mult_bra_mult_ket", den_type);
+        }
+    }
+}
