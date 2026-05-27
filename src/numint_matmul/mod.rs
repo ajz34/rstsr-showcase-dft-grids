@@ -3,10 +3,10 @@
 
 pub mod buffer_pool;
 pub mod nimatmul;
+pub mod pure_eval_rho;
 pub mod pure_eval_rho_naive;
-pub mod pure_eval_rho_parenh;
+pub mod pure_xcpot;
 pub mod pure_xcpot_naive;
-pub mod pure_xcpot_parenh;
 
 #[allow(unused)]
 pub mod prelude {
@@ -14,10 +14,10 @@ pub mod prelude {
 
     pub(crate) use super::buffer_pool::*;
     pub(crate) use super::nimatmul::*;
+    pub(crate) use super::pure_eval_rho::*;
     pub(crate) use super::pure_eval_rho_naive::*;
-    pub(crate) use super::pure_eval_rho_parenh::*;
+    pub(crate) use super::pure_xcpot::*;
     pub(crate) use super::pure_xcpot_naive::*;
-    pub(crate) use super::pure_xcpot_parenh::*;
 
     pub(crate) use std::sync::Mutex;
 }
