@@ -95,7 +95,7 @@ fn contract_ao_wv_without_symmetrize(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao]`
-pub fn rks_vxc_pot_with_output_parenh(
+pub fn rks_vxc_pot_with_output(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -176,7 +176,7 @@ pub fn rks_vxc_pot_with_output_parenh(
     Ok(())
 }
 
-pub fn rks_fxc_pot_with_output_parenh(
+pub fn rks_fxc_pot_with_output(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -279,7 +279,7 @@ pub fn rks_fxc_pot_with_output_parenh(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, nset1, nset2]`
 #[allow(clippy::too_many_arguments)]
-pub fn rks_kxc_pot_with_output_parenh(
+pub fn rks_kxc_pot_with_output(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,
@@ -390,7 +390,7 @@ pub fn rks_kxc_pot_with_output_parenh(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao, 2]`
-pub fn uks_vxc_pot_with_output_parenh(
+pub fn uks_vxc_pot_with_output(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -487,7 +487,7 @@ pub fn uks_vxc_pot_with_output_parenh(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `fxc` : output fxc, shape `[nao, nao, 2, nset]`
-pub fn uks_fxc_pot_with_output_parenh(
+pub fn uks_fxc_pot_with_output(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -596,7 +596,7 @@ pub fn uks_fxc_pot_with_output_parenh(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, 2, nset1, nset2]`
 #[allow(clippy::too_many_arguments)]
-pub fn uks_kxc_pot_with_output_parenh(
+pub fn uks_kxc_pot_with_output(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,

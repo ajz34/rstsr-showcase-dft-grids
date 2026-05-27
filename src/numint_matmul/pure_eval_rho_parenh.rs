@@ -11,7 +11,7 @@ use NIDenType::*;
 /// - `dm_list` : density matrices, each of shape `[nao, nao]`; one per set
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-pub fn get_rho_from_dm_with_output_parenh(
+pub fn get_rho_from_dm_with_output(
     ao: TsrView,
     dm_list: &[TsrView],
     den_type: NIDenType,
@@ -111,7 +111,7 @@ pub fn get_rho_from_dm_with_output_parenh(
 /// - `bra_list` : orbital coefficient matrices, each of shape `[nao, nocc_i]`
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-pub fn get_rho_from_homogeneous_braket_with_output_parenh(
+pub fn get_rho_from_homogeneous_braket_with_output(
     ao: TsrView,
     bra_list: &[TsrView],
     den_type: NIDenType,
@@ -218,7 +218,7 @@ pub fn get_rho_from_homogeneous_braket_with_output_parenh(
 /// - `ket_list` : orbital coefficient matrices, each of shape `[nao, nocc]`
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-pub fn get_rho_from_one_bra_mult_ket_with_output_parenh(
+pub fn get_rho_from_one_bra_mult_ket_with_output(
     ao: TsrView,
     bra: TsrView,
     ket_list: &[TsrView],
@@ -348,7 +348,7 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_parenh(
 /// - `ket_list` : orbital coefficient matrices for ket
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-pub fn get_rho_from_mult_bra_mult_ket_with_output_parenh(
+pub fn get_rho_from_mult_bra_mult_ket_with_output(
     ao: TsrView,
     bra_list: &[TsrView],
     ket_list: &[TsrView],

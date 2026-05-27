@@ -14,7 +14,7 @@ use NIDenType::*;
 /// Note this function does not use the scratch buffer `buf`, so probably there has some allocation
 /// cost, but the code is very simple.
 #[allow(unused)]
-fn contract_ao_wv_without_buf(
+fn contract_ao_wv_without_buf_naive(
     den_type: NIDenType,
     wv: TsrView,
     ao: TsrView,
@@ -82,7 +82,7 @@ fn contract_ao_wv_without_buf(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `out` : output buffer, shape `[nao, nao]`
 /// - `buf` : scratch buffer of length at least `ngrids * nao`
-fn contract_ao_wv(
+fn contract_ao_wv_naive(
     den_type: NIDenType,
     wv: TsrView,
     ao: TsrView,
@@ -168,7 +168,7 @@ fn contract_ao_wv(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao]`
 /// - `buf` : scratch buffer of length at least `ngrids * nao`
-pub fn rks_vxc_pot_with_output(
+pub fn rks_vxc_pot_with_output_naive(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -193,10 +193,10 @@ pub fn rks_vxc_pot_with_output(
     }
 
     let vxc_contracted = weights * vxc_eff;
-    contract_ao_wv(den_type, vxc_contracted.view(), ao, vxc, buf)
+    contract_ao_wv_naive(den_type, vxc_contracted.view(), ao, vxc, buf)
 }
 
-pub fn rks_fxc_pot_with_output(
+pub fn rks_fxc_pot_with_output_naive(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -226,7 +226,7 @@ pub fn rks_fxc_pot_with_output(
     let fxc_eff_weighted = &weights * &fxc_eff;
     for i in 0..nset {
         let fxc_contracted = (&fxc_eff_weighted * rho1.i((.., .., None, i))).sum_axes(1);
-        contract_ao_wv(den_type, fxc_contracted.view(), ao.view(), fxc.i_mut((.., .., i)), buf)?;
+        contract_ao_wv_naive(den_type, fxc_contracted.view(), ao.view(), fxc.i_mut((.., .., i)), buf)?;
     }
     Ok(())
 }
@@ -244,7 +244,7 @@ pub fn rks_fxc_pot_with_output(
 /// - `kxc` : output kxc, shape `[nao, nao, nset1, nset2]`
 /// - `buf` : scratch buffer of length at least `ngrids * nao`
 #[allow(clippy::too_many_arguments)]
-pub fn rks_kxc_pot_with_output(
+pub fn rks_kxc_pot_with_output_naive(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,
@@ -284,7 +284,7 @@ pub fn rks_kxc_pot_with_output(
             let temp = (&kxc_eff_weighted * &rho1_slice).sum_axes(1); // [ngrids, nvar, nvar]
             let rho2_slice = rho2.i((.., .., None, i2)); // [ngrids, nvar, 1]
             let kxc_contracted = (&temp * &rho2_slice).sum_axes(1); // [ngrids, nvar]
-            contract_ao_wv(den_type, kxc_contracted.view(), ao.view(), kxc.i_mut((.., .., i1, i2)), buf)?;
+            contract_ao_wv_naive(den_type, kxc_contracted.view(), ao.view(), kxc.i_mut((.., .., i1, i2)), buf)?;
         }
     }
 
@@ -301,7 +301,7 @@ pub fn rks_kxc_pot_with_output(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao, 2]`
 /// - `buf` : scratch buffer of length at least `ngrids * nao`
-pub fn uks_vxc_pot_with_output(
+pub fn uks_vxc_pot_with_output_naive(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -328,7 +328,7 @@ pub fn uks_vxc_pot_with_output(
 
     for s in 0..2 {
         let vxc_contracted = &weights * vxc_eff.i((.., .., s));
-        contract_ao_wv(den_type, vxc_contracted.view(), ao.view(), vxc.i_mut((.., .., s)), buf)?;
+        contract_ao_wv_naive(den_type, vxc_contracted.view(), ao.view(), vxc.i_mut((.., .., s)), buf)?;
     }
     Ok(())
 }
@@ -344,7 +344,7 @@ pub fn uks_vxc_pot_with_output(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `fxc` : output fxc, shape `[nao, nao, 2, nset]`
 /// - `buf` : scratch buffer of length at least `ngrids * nao`
-pub fn uks_fxc_pot_with_output(
+pub fn uks_fxc_pot_with_output_naive(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -380,7 +380,7 @@ pub fn uks_fxc_pot_with_output(
             // Contract over the inner spin+var pair (axes 1 and 2)
             let fxc_contracted =
                 (&fxc_eff_weighted.i((.., .., .., .., s)) * rho1.i((.., .., .., None, i))).sum_axes([1, 2]);
-            contract_ao_wv(den_type, fxc_contracted.view(), ao.view(), fxc.i_mut((.., .., s, i)), buf)?;
+            contract_ao_wv_naive(den_type, fxc_contracted.view(), ao.view(), fxc.i_mut((.., .., s, i)), buf)?;
         }
     }
     Ok(())
@@ -399,7 +399,7 @@ pub fn uks_fxc_pot_with_output(
 /// - `kxc` : output kxc, shape `[nao, nao, 2, nset1, nset2]`
 /// - `buf` : scratch buffer of length at least `ngrids * nao`
 #[allow(clippy::too_many_arguments)]
-pub fn uks_kxc_pot_with_output(
+pub fn uks_kxc_pot_with_output_naive(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,
@@ -440,10 +440,11 @@ pub fn uks_kxc_pot_with_output(
                 let kxc_slice = kxc_eff_weighted.i((.., .., .., .., .., .., s)); // [ngrids, nvar, 2, nvar, 2, nvar]
                 let rho1_slice = rho1.i((.., .., .., None, None, None, i1)); // [ngrids, nvar, 2, 1, 1, 1]
                 let temp = (&kxc_slice * &rho1_slice).sum_axes([1, 2]); // [ngrids, nvar, 2, nvar]
+
                 // Step 2: contract temp with rho2 over remaining spin+var pair (axes 1, 2)
                 let rho2_slice = rho2.i((.., .., .., None, i2)); // [ngrids, nvar, 2, 1]
                 let kxc_contracted = (&temp * &rho2_slice).sum_axes([1, 2]); // [ngrids, nvar]
-                contract_ao_wv(den_type, kxc_contracted.view(), ao.view(), kxc.i_mut((.., .., s, i1, i2)), buf)?;
+                contract_ao_wv_naive(den_type, kxc_contracted.view(), ao.view(), kxc.i_mut((.., .., s, i1, i2)), buf)?;
             }
         }
     }
