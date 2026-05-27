@@ -104,12 +104,9 @@ mod test_eval_rho_pure {
         for den_type in [RHO, SIGMA, TAU, LAPL] {
             let mut out_naive = create_out(h2o, den_type);
             let mut out_opt = create_out(h2o, den_type);
-            get_rho_from_homogeneous_braket_with_output_naive(
-                ao.view(), &bra_views, den_type, out_naive.view_mut(),
-            ).unwrap();
-            get_rho_from_homogeneous_braket_with_output(
-                ao.view(), &bra_views, den_type, out_opt.view_mut(),
-            ).unwrap();
+            get_rho_from_homogeneous_braket_with_output_naive(ao.view(), &bra_views, den_type, out_naive.view_mut())
+                .unwrap();
+            get_rho_from_homogeneous_braket_with_output(ao.view(), &bra_views, den_type, out_opt.view_mut()).unwrap();
             assert_match(&out_naive, &out_opt, "get_rho_from_homogeneous_braket", den_type);
         }
     }

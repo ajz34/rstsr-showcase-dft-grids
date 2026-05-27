@@ -75,9 +75,9 @@ mod test_xcpot {
         let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), RHO, 0).unwrap();
         let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), RHO, 0).unwrap();
         assert!((exc - -8.1384975323).abs() < 1e-6);
-        fp_assert_eq!(vxc.view(),-27.2331156537, 1e-6);
-        fp_assert_eq!(fxc.view(),-0.09693300035135462, 1e-6);
-        fp_assert_eq!(kxc.view(),0.3789165091826895, 1e-6);
+        fp_assert_eq!(vxc.view(), -27.2331156537, 1e-6);
+        fp_assert_eq!(fxc.view(), -0.09693300035135462, 1e-6);
+        fp_assert_eq!(kxc.view(), 0.3789165091826895, 1e-6);
     }
 
     #[rstest]
@@ -97,9 +97,9 @@ mod test_xcpot {
         let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), SIGMA, 0).unwrap();
         let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), SIGMA, 0).unwrap();
         assert!((exc - -8.9542650216).abs() < 1e-6);
-        fp_assert_eq!(vxc.view(),-28.6270372279, 1e-6);
-        fp_assert_eq!(fxc.view(),-0.10389233031803395, 1e-6);
-        fp_assert_eq!(kxc.view(),0.40594124509389706, 1e-6);
+        fp_assert_eq!(vxc.view(), -28.6270372279, 1e-6);
+        fp_assert_eq!(fxc.view(), -0.10389233031803395, 1e-6);
+        fp_assert_eq!(kxc.view(), 0.40594124509389706, 1e-6);
     }
 
     #[rstest]
@@ -119,9 +119,9 @@ mod test_xcpot {
         let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, 0).unwrap();
         let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), TAU, 0).unwrap();
         assert!((exc - -8.4667246286).abs() < 1e-6);
-        fp_assert_eq!(vxc.view(),-26.3517912584, 1e-6);
-        fp_assert_eq!(fxc.view(),-0.09110536214579629, 1e-6);
-        fp_assert_eq!(kxc.view(),0.5466595210064285, 1e-6);
+        fp_assert_eq!(vxc.view(), -26.3517912584, 1e-6);
+        fp_assert_eq!(fxc.view(), -0.09110536214579629, 1e-6);
+        fp_assert_eq!(kxc.view(), 0.5466595210064285, 1e-6);
     }
 }
 
@@ -144,14 +144,17 @@ mod test_xcpot_pure {
     }
 
     #[rstest]
-    fn test_rks_vxc_pot_naive_vs_optimized(
-        h2o: &H2OMolecule,
-    ) {
+    fn test_rks_vxc_pot_naive_vs_optimized(h2o: &H2OMolecule) {
         let mut ni_obj = h2o.build_ni_obj();
         for den_type in [RHO, SIGMA, TAU] {
             let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], den_type).unwrap().into_squeeze(-1);
             let xc_func = LibXCFunctional::from_identifier(
-                match den_type { RHO => "LDA_X", SIGMA => "GGA_X_PBE", TAU => "HYB_MGGA_XC_TPSSH", _ => unreachable!() },
+                match den_type {
+                    RHO => "LDA_X",
+                    SIGMA => "GGA_X_PBE",
+                    TAU => "HYB_MGGA_XC_TPSSH",
+                    _ => unreachable!(),
+                },
                 Unpolarized,
             );
             let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 1, true).unwrap();
@@ -161,28 +164,34 @@ mod test_xcpot_pure {
             let mut out_naive = make_out(&[nao, nao], h2o);
             let mut out_opt = make_out(&[nao, nao], h2o);
             rks_vxc_pot_with_output_naive(
-                den_type, xc_eff[1].view(), ao.view(), h2o.weights.view(), out_naive.view_mut(),
-            ).unwrap();
-            rks_vxc_pot_with_output(
-                den_type, xc_eff[1].view(), ao.view(), h2o.weights.view(), out_opt.view_mut(),
-            ).unwrap();
+                den_type,
+                xc_eff[1].view(),
+                ao.view(),
+                h2o.weights.view(),
+                out_naive.view_mut(),
+            )
+            .unwrap();
+            rks_vxc_pot_with_output(den_type, xc_eff[1].view(), ao.view(), h2o.weights.view(), out_opt.view_mut())
+                .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
             assert!(diff < 1e-10, "{:?} vxc naive vs opt max diff = {:.3e}", den_type, diff);
         }
     }
 
     #[rstest]
-    fn test_rks_fxc_pot_naive_vs_optimized(
-        h2o: &H2OMolecule,
-        perturbed_dm: &H2OPerturbedDM,
-    ) {
+    fn test_rks_fxc_pot_naive_vs_optimized(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
         let mut ni_obj = h2o.build_ni_obj();
         for den_type in [RHO, SIGMA, TAU] {
             let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], den_type).unwrap().into_squeeze(-1);
             let dm1_list: Vec<_> = perturbed_dm.dm1_flat.axes_iter(-1).collect();
             let rho1 = ni_obj.make_rho_from_dm(&dm1_list, den_type).unwrap();
             let xc_func = LibXCFunctional::from_identifier(
-                match den_type { RHO => "LDA_X", SIGMA => "GGA_X_PBE", TAU => "HYB_MGGA_XC_TPSSH", _ => unreachable!() },
+                match den_type {
+                    RHO => "LDA_X",
+                    SIGMA => "GGA_X_PBE",
+                    TAU => "HYB_MGGA_XC_TPSSH",
+                    _ => unreachable!(),
+                },
                 Unpolarized,
             );
             let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 2, true).unwrap();
@@ -192,21 +201,30 @@ mod test_xcpot_pure {
             let mut out_naive = make_out(&[nao, nao, perturbed_dm.ncomp1], h2o);
             let mut out_opt = make_out(&[nao, nao, perturbed_dm.ncomp1], h2o);
             rks_fxc_pot_with_output_naive(
-                den_type, xc_eff[2].view(), rho1.view(), ao.view(), h2o.weights.view(), out_naive.view_mut(),
-            ).unwrap();
+                den_type,
+                xc_eff[2].view(),
+                rho1.view(),
+                ao.view(),
+                h2o.weights.view(),
+                out_naive.view_mut(),
+            )
+            .unwrap();
             rks_fxc_pot_with_output(
-                den_type, xc_eff[2].view(), rho1.view(), ao.view(), h2o.weights.view(), out_opt.view_mut(),
-            ).unwrap();
+                den_type,
+                xc_eff[2].view(),
+                rho1.view(),
+                ao.view(),
+                h2o.weights.view(),
+                out_opt.view_mut(),
+            )
+            .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
             assert!(diff < 1e-10, "{:?} fxc naive vs opt max diff = {:.3e}", den_type, diff);
         }
     }
 
     #[rstest]
-    fn test_rks_kxc_pot_naive_vs_optimized(
-        h2o: &H2OMolecule,
-        perturbed_dm: &H2OPerturbedDM,
-    ) {
+    fn test_rks_kxc_pot_naive_vs_optimized(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
         let mut ni_obj = h2o.build_ni_obj();
         for den_type in [RHO, SIGMA, TAU] {
             let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], den_type).unwrap().into_squeeze(-1);
@@ -215,7 +233,12 @@ mod test_xcpot_pure {
             let rho1 = ni_obj.make_rho_from_dm(&dm1_list, den_type).unwrap();
             let rho2 = ni_obj.make_rho_from_dm(&dm2_list, den_type).unwrap();
             let xc_func = LibXCFunctional::from_identifier(
-                match den_type { RHO => "LDA_X", SIGMA => "GGA_X_PBE", TAU => "HYB_MGGA_XC_TPSSH", _ => unreachable!() },
+                match den_type {
+                    RHO => "LDA_X",
+                    SIGMA => "GGA_X_PBE",
+                    TAU => "HYB_MGGA_XC_TPSSH",
+                    _ => unreachable!(),
+                },
                 Unpolarized,
             );
             let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
@@ -225,11 +248,25 @@ mod test_xcpot_pure {
             let mut out_naive = make_out(&[nao, nao, perturbed_dm.ncomp1, perturbed_dm.ncomp2], h2o);
             let mut out_opt = make_out(&[nao, nao, perturbed_dm.ncomp1, perturbed_dm.ncomp2], h2o);
             rks_kxc_pot_with_output_naive(
-                den_type, xc_eff[3].view(), rho1.view(), rho2.view(), ao.view(), h2o.weights.view(), out_naive.view_mut(),
-            ).unwrap();
+                den_type,
+                xc_eff[3].view(),
+                rho1.view(),
+                rho2.view(),
+                ao.view(),
+                h2o.weights.view(),
+                out_naive.view_mut(),
+            )
+            .unwrap();
             rks_kxc_pot_with_output(
-                den_type, xc_eff[3].view(), rho1.view(), rho2.view(), ao.view(), h2o.weights.view(), out_opt.view_mut(),
-            ).unwrap();
+                den_type,
+                xc_eff[3].view(),
+                rho1.view(),
+                rho2.view(),
+                ao.view(),
+                h2o.weights.view(),
+                out_opt.view_mut(),
+            )
+            .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
             assert!(diff < 1e-10, "{:?} kxc naive vs opt max diff = {:.3e}", den_type, diff);
         }

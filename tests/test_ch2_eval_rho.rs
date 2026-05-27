@@ -206,8 +206,7 @@ mod test_eval_rho_pure {
     };
     use rstsr_showcase_dft_grids::numint_matmul::pure_eval_rho_naive::{
         get_rho_from_dm_with_output_naive, get_rho_from_homogeneous_braket_with_output_naive,
-        get_rho_from_mult_bra_mult_ket_with_output_naive,
-        get_rho_from_one_bra_mult_ket_with_output_naive,
+        get_rho_from_mult_bra_mult_ket_with_output_naive, get_rho_from_one_bra_mult_ket_with_output_naive,
     };
 
     fn create_out(ch2: &Ch2Molecule, den_type: NIDenType) -> Tsr {
@@ -262,12 +261,9 @@ mod test_eval_rho_pure {
         for den_type in [RHO, SIGMA, TAU, LAPL] {
             let mut out_naive = create_out(ch2, den_type);
             let mut out_opt = create_out(ch2, den_type);
-            get_rho_from_homogeneous_braket_with_output_naive(
-                ao.view(), &bra_views, den_type, out_naive.view_mut(),
-            ).unwrap();
-            get_rho_from_homogeneous_braket_with_output(
-                ao.view(), &bra_views, den_type, out_opt.view_mut(),
-            ).unwrap();
+            get_rho_from_homogeneous_braket_with_output_naive(ao.view(), &bra_views, den_type, out_naive.view_mut())
+                .unwrap();
+            get_rho_from_homogeneous_braket_with_output(ao.view(), &bra_views, den_type, out_opt.view_mut()).unwrap();
             assert_match(&out_naive, &out_opt, "get_rho_from_homogeneous_braket", den_type);
         }
     }
@@ -282,11 +278,15 @@ mod test_eval_rho_pure {
             let mut out_naive = create_out(ch2, den_type);
             let mut out_opt = create_out(ch2, den_type);
             get_rho_from_one_bra_mult_ket_with_output_naive(
-                ao.view(), bra.view(), &ket_views, den_type, out_naive.view_mut(),
-            ).unwrap();
-            get_rho_from_one_bra_mult_ket_with_output(
-                ao.view(), bra.view(), &ket_views, den_type, out_opt.view_mut(),
-            ).unwrap();
+                ao.view(),
+                bra.view(),
+                &ket_views,
+                den_type,
+                out_naive.view_mut(),
+            )
+            .unwrap();
+            get_rho_from_one_bra_mult_ket_with_output(ao.view(), bra.view(), &ket_views, den_type, out_opt.view_mut())
+                .unwrap();
             assert_match(&out_naive, &out_opt, "get_rho_from_one_bra_mult_ket", den_type);
         }
     }
@@ -302,11 +302,15 @@ mod test_eval_rho_pure {
             let mut out_naive = create_out(ch2, den_type);
             let mut out_opt = create_out(ch2, den_type);
             get_rho_from_mult_bra_mult_ket_with_output_naive(
-                ao.view(), &bra_views, &ket_views, den_type, out_naive.view_mut(),
-            ).unwrap();
-            get_rho_from_mult_bra_mult_ket_with_output(
-                ao.view(), &bra_views, &ket_views, den_type, out_opt.view_mut(),
-            ).unwrap();
+                ao.view(),
+                &bra_views,
+                &ket_views,
+                den_type,
+                out_naive.view_mut(),
+            )
+            .unwrap();
+            get_rho_from_mult_bra_mult_ket_with_output(ao.view(), &bra_views, &ket_views, den_type, out_opt.view_mut())
+                .unwrap();
             assert_match(&out_naive, &out_opt, "get_rho_from_mult_bra_mult_ket", den_type);
         }
     }

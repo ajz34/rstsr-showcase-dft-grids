@@ -6,7 +6,11 @@ use NIDenType::*;
 
 // https://stackoverflow.com/a/65563202/7740992
 pub fn count_combinations(n: usize, r: usize) -> usize {
-    if r > n { 0 } else { (1..=r).fold(1, |acc, val| acc * (n - val + 1) / val) }
+    if r > n {
+        0
+    } else {
+        (1..=r).fold(1, |acc, val| acc * (n - val + 1) / val)
+    }
 }
 
 /* #region libxc-to-xcfun index convention change */
@@ -76,7 +80,11 @@ pub fn libxc_transform_xcfun_indices(
     // sanity check
     assert!(xc0.ndim() == 2, "xc0 must be a 2D tensor");
     let indices = libxc_to_xcfun_mapping(den_type, spin, deriv);
-    if let Some(indices) = indices { xc0.index_select(-1, &indices).into_cow() } else { xc0.into_cow() }
+    if let Some(indices) = indices {
+        xc0.index_select(-1, &indices).into_cow()
+    } else {
+        xc0.into_cow()
+    }
 }
 
 /* #endregion libxc-to-xcfun index convention change */
