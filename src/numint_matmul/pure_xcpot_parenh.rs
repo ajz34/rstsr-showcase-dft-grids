@@ -144,7 +144,8 @@ pub fn rks_vxc_pot_with_output_parenh(
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
-        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+        let mut vxc_buf = vxc_pool.get();
+        let mut vxc_local = rt::asarray((&mut vxc_buf, [nao, nao], ao.device()));
 
         // perform actual evaulation
         let vxc_contracted_chunk = vxc_contracted.i(start..end);
@@ -165,7 +166,7 @@ pub fn rks_vxc_pot_with_output_parenh(
 
         // return buffer to pool
         buffer_pool.put(buf);
-        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        vxc_pool.put(vxc_buf);
         Ok(())
     })?;
 
@@ -207,8 +208,8 @@ pub fn rks_fxc_pot_with_output_parenh(
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
-    let vxc_init = || vec![0.0; nao * nao];
-    let vxc_pool = BufferPool::new(vxc_init);
+    let fxc_init = || vec![0.0; nao * nao];
+    let fxc_pool = BufferPool::new(fxc_init);
 
     // task numbers
     let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
@@ -229,7 +230,8 @@ pub fn rks_fxc_pot_with_output_parenh(
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
-        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+        let mut fxc_buf = fxc_pool.get();
+        let mut fxc_local = rt::asarray((&mut fxc_buf, [nao, nao], ao.device()));
 
         // perform actual evaluation
         let rho1_chunk = rho1.i((start..end, .., None, i));
@@ -240,19 +242,19 @@ pub fn rks_fxc_pot_with_output_parenh(
             den_type,
             fxc_contracted_chunk.view(),
             ao_chunk.view(),
-            vxc_local.view_mut(),
+            fxc_local.view_mut(),
             &mut buf,
         )?;
 
         // write back with lock
         let lock = guard[i].lock().unwrap();
         let mut fxc = unsafe { fxc.force_mut() };
-        *&mut fxc.i_mut((.., .., i)) += &vxc_local;
+        *&mut fxc.i_mut((.., .., i)) += &fxc_local;
         drop(lock);
 
         // return buffer to pool
         buffer_pool.put(buf);
-        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        fxc_pool.put(fxc_buf);
         Ok(())
     })?;
 
@@ -313,8 +315,8 @@ pub fn rks_kxc_pot_with_output_parenh(
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
-    let vxc_init = || vec![0.0; nao * nao];
-    let vxc_pool = BufferPool::new(vxc_init);
+    let kxc_init = || vec![0.0; nao * nao];
+    let kxc_pool = BufferPool::new(kxc_init);
 
     // task numbers
     let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
@@ -337,7 +339,8 @@ pub fn rks_kxc_pot_with_output_parenh(
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
-        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+        let mut kxc_buf = kxc_pool.get();
+        let mut kxc_local = rt::asarray((&mut kxc_buf, [nao, nao], ao.device()));
 
         // perform actual evaluation
         let rho1_chunk = rho1.i((start..end, .., None, i1));
@@ -351,19 +354,19 @@ pub fn rks_kxc_pot_with_output_parenh(
             den_type,
             kxc_contracted_chunk.view(),
             ao_chunk.view(),
-            vxc_local.view_mut(),
+            kxc_local.view_mut(),
             &mut buf,
         )?;
 
         // write back with lock
         let lock = guard[j].lock().unwrap();
         let mut kxc = unsafe { kxc.force_mut() };
-        *&mut kxc.i_mut((.., .., i1, i2)) += &vxc_local;
+        *&mut kxc.i_mut((.., .., i1, i2)) += &kxc_local;
         drop(lock);
 
         // return buffer to pool
         buffer_pool.put(buf);
-        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        kxc_pool.put(kxc_buf);
         Ok(())
     })?;
 
@@ -439,7 +442,8 @@ pub fn uks_vxc_pot_with_output_parenh(
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
-        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+        let mut vxc_buf = vxc_pool.get();
+        let mut vxc_local = rt::asarray((&mut vxc_buf, [nao, nao], ao.device()));
 
         // perform actual evaluation
         let vxc_contracted_chunk = vxc_eff_weighted.i((start..end, .., s));
@@ -460,7 +464,7 @@ pub fn uks_vxc_pot_with_output_parenh(
 
         // return buffer to pool
         buffer_pool.put(buf);
-        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        vxc_pool.put(vxc_buf);
         Ok(())
     })?;
 
@@ -516,8 +520,8 @@ pub fn uks_fxc_pot_with_output_parenh(
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
-    let vxc_init = || vec![0.0; nao * nao];
-    let vxc_pool = BufferPool::new(vxc_init);
+    let fxc_init = || vec![0.0; nao * nao];
+    let fxc_pool = BufferPool::new(fxc_init);
 
     // task numbers
     let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
@@ -540,7 +544,8 @@ pub fn uks_fxc_pot_with_output_parenh(
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
-        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+        let mut fxc_buf = fxc_pool.get();
+        let mut fxc_local = rt::asarray((&mut fxc_buf, [nao, nao], ao.device()));
 
         // perform actual evaluation
         let rho1_chunk = rho1.i((start..end, .., .., None, i));
@@ -552,19 +557,19 @@ pub fn uks_fxc_pot_with_output_parenh(
             den_type,
             fxc_contracted_chunk.view(),
             ao_chunk.view(),
-            vxc_local.view_mut(),
+            fxc_local.view_mut(),
             &mut buf,
         )?;
 
         // write back with lock
         let lock = guard[j].lock().unwrap();
         let mut fxc = unsafe { fxc.force_mut() };
-        *&mut fxc.i_mut((.., .., s, i)) += &vxc_local;
+        *&mut fxc.i_mut((.., .., s, i)) += &fxc_local;
         drop(lock);
 
         // return buffer to pool
         buffer_pool.put(buf);
-        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        fxc_pool.put(fxc_buf);
         Ok(())
     })?;
 
@@ -628,8 +633,8 @@ pub fn uks_kxc_pot_with_output_parenh(
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
-    let vxc_init = || vec![0.0; nao * nao];
-    let vxc_pool = BufferPool::new(vxc_init);
+    let kxc_init = || vec![0.0; nao * nao];
+    let kxc_pool = BufferPool::new(kxc_init);
 
     // task numbers
     let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
@@ -653,7 +658,8 @@ pub fn uks_kxc_pot_with_output_parenh(
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
-        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+        let mut kxc_buf = kxc_pool.get();
+        let mut kxc_local = rt::asarray((&mut kxc_buf, [nao, nao], ao.device()));
 
         // perform actual evaluation
         let rho1_chunk = rho1.i((start..end, .., .., None, None, None, i1));
@@ -668,19 +674,19 @@ pub fn uks_kxc_pot_with_output_parenh(
             den_type,
             kxc_contracted_chunk.view(),
             ao_chunk.view(),
-            vxc_local.view_mut(),
+            kxc_local.view_mut(),
             &mut buf,
         )?;
 
         // write back with lock
         let lock = guard[j].lock().unwrap();
         let mut kxc = unsafe { kxc.force_mut() };
-        *&mut kxc.i_mut((.., .., s, i1, i2)) += &vxc_local;
+        *&mut kxc.i_mut((.., .., s, i1, i2)) += &kxc_local;
         drop(lock);
 
         // return buffer to pool
         buffer_pool.put(buf);
-        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        kxc_pool.put(kxc_buf);
         Ok(())
     })?;
 

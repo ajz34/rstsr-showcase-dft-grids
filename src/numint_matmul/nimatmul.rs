@@ -57,8 +57,7 @@ impl<'a> NIMatMul<'a> {
         let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        let mut buf = vec![0.0; ngrids * nao];
-        get_rho_from_dm_with_output(ao, dm_list, den_type, out.view_mut(), &mut buf)?;
+        get_rho_from_dm_with_output_parenh(ao, dm_list, den_type, out.view_mut())?;
         Ok(out)
     }
 
@@ -75,15 +74,12 @@ impl<'a> NIMatMul<'a> {
             ni_check_shape!(bra.ndim(), 2, "Each braket must be 2D")?;
             ni_check_shape!(bra.shape()[0], nao, "Bra's first dimension must match AO dimension")?;
         }
-        let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
+        let _nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
         let nset = bra_list.len();
-
-        // compute the output
         let out_shape = [ngrid, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        let mut buf = vec![0.0; 2 * ngrid * nocc_max];
-        get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out.view_mut(), &mut buf)?;
+        get_rho_from_homogeneous_braket_with_output_parenh(ao, bra_list, den_type, out.view_mut())?;
         Ok(out)
     }
 
@@ -110,8 +106,7 @@ impl<'a> NIMatMul<'a> {
         let out_shape = [ngrid, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        let mut buf = vec![0.0; 3 * ngrid * nocc];
-        get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out.view_mut(), &mut buf)?;
+        get_rho_from_one_bra_mult_ket_with_output_parenh(ao, bra, ket_list, den_type, out.view_mut())?;
         Ok(out)
     }
 
@@ -132,14 +127,13 @@ impl<'a> NIMatMul<'a> {
             ni_check_shape!(nao, ket.shape()[0], "Ket first dimension must match AO dimension")?;
             ni_check_shape!(bra.shape()[1], ket.shape()[1], "Bra and ket occupation must match")?;
         }
-        let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
+        let _nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
         let nset = bra_list.len();
 
         let out_shape = [ngrid, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        let mut buf = vec![0.0; 3 * ngrid * nocc_max];
-        get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out.view_mut(), &mut buf)?;
+        get_rho_from_mult_bra_mult_ket_with_output_parenh(ao, bra_list, ket_list, den_type, out.view_mut())?;
         Ok(out)
     }
 
