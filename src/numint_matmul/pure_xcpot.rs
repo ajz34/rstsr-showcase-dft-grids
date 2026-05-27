@@ -73,6 +73,15 @@ fn contract_ao_wv_without_buf(
     Ok(())
 }
 
+/// Contract AO values with a weight vector to produce a symmetric matrix.
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `wv` : weight vector, shape `[ngrids, nvar]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `out` : output buffer, shape `[nao, nao]`
+/// - `buf` : scratch buffer of length at least `ngrids * nao`
 fn contract_ao_wv(
     den_type: NIDenType,
     wv: TsrView,
@@ -278,22 +287,6 @@ pub fn rks_kxc_pot_with_output(
             contract_ao_wv(den_type, kxc_contracted.view(), ao.view(), kxc.i_mut((.., .., i1, i2)), buf)?;
         }
     }
-
-    /*
-    (0..nset2 * nset1).into_par_iter().for_each(|i12| {
-        let mut buf = buf.to_vec();
-        let i1 = i12 % nset1;
-        let i2 = i12 / nset1;
-        // Two-step contraction: first contract kxc_eff with rho1, then with rho2
-        let rho1_slice = rho1.i((.., .., None, None, i1)); // [ngrids, nvar, 1, 1]
-        let temp = (&kxc_eff_weighted * &rho1_slice).sum_axes(1); // [ngrids, nvar, nvar]
-        let rho2_slice = rho2.i((.., .., None, i2)); // [ngrids, nvar, 1]
-        let kxc_contracted = (&temp * &rho2_slice).sum_axes(1); // [ngrids, nvar]
-        let kxc_view = kxc.i((.., .., i1, i2));
-        let kxc_view = unsafe { kxc_view.force_mut() };
-        contract_ao_wv(den_type, kxc_contracted.view(), ao.view(), kxc_view, &mut buf).unwrap();
-    });
-    */
 
     Ok(())
 }
