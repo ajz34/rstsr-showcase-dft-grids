@@ -131,6 +131,8 @@ class TestXCPot(unittest.TestCase):
         _, exc, vxc = ni.nr_rks(mol, grids, "LDA_X", self.dm0)
         self.assertAlmostEqual(exc, -8.1384975323, places=6)
         self.assertAlmostEqual(lib.fp(vxc), -27.2331156537, places=6)
+        fxc = ni.nr_rks_fxc(mol, grids, "LDA_X", self.dm0, self.dm1)
+        self.assertAlmostEqual(lib.fp(fxc), -0.09693300035135462, places=6)
         # test of current implementation
         # exc
         exc = (exc_eff * rho0[0] * weights).sum()
@@ -159,6 +161,8 @@ class TestXCPot(unittest.TestCase):
         _, exc, vxc = ni.nr_rks(mol, grids, "GGA_X_PBE", self.dm0)
         self.assertAlmostEqual(exc, -8.9542650216, places=6)
         self.assertAlmostEqual(lib.fp(vxc), -28.6270372279, places=6)
+        fxc = ni.nr_rks_fxc(mol, grids, "GGA_X_PBE", self.dm0, self.dm1)
+        self.assertAlmostEqual(lib.fp(fxc), -0.10389233031803395, places=6)
         # test of current implementation
         # exc
         exc = (exc_eff * rho0[0] * weights).sum()
@@ -189,6 +193,8 @@ class TestXCPot(unittest.TestCase):
         _, exc, vxc = ni.nr_rks(mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0)
         self.assertAlmostEqual(exc, -8.4667246286, places=6)
         self.assertAlmostEqual(lib.fp(vxc), -26.3517912584, places=6)
+        fxc = ni.nr_rks_fxc(mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0, self.dm1)
+        self.assertAlmostEqual(lib.fp(fxc), -0.09110536214579629, places=6)
         # test of current implementation
         # exc
         exc = (exc_eff * rho0[0] * weights).sum()

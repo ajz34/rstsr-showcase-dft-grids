@@ -17,7 +17,7 @@ def contract_ao_wv(den_type: str, wv: np.ndarray, ao: np.ndarray) -> np.ndarray:
     Returns
     -------
     contracted : np.ndarray
-        The contracted AO, shape [nao, ngrids].
+        The contracted AO, shape [nao, nao].
     """
     nvar, ngrids = wv.shape
     assert num_nvar(den_type) == nvar
