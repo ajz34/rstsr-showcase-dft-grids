@@ -42,9 +42,6 @@ pub fn get_rho_from_dm_with_output_parenh(
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
-    // mutex for write-back
-    let guard = Mutex::new(());
-
     (0..ntask).into_par_iter().try_for_each(|itask| {
         // determine task configuration
         let iset = itask % ntask_i;
@@ -93,12 +90,9 @@ pub fn get_rho_from_dm_with_output_parenh(
             *&mut out_local.i_mut((.., 5)) += tau_contrib;
         }
 
-        // write back with lock
-        {
-            let _lock = guard.lock().unwrap();
-            let mut out = unsafe { out.force_mut() };
-            out.i_mut((start..end, .., iset)).assign(&out_local);
-        }
+        // write back (should not race by design)
+        let mut out = unsafe { out.force_mut() };
+        out.i_mut((start..end, .., iset)).assign(&out_local);
 
         // return buffers to pool
         scr_pool.put(scr_buf);
@@ -151,9 +145,6 @@ pub fn get_rho_from_homogeneous_braket_with_output_parenh(
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
-    // mutex for write-back
-    let guard = Mutex::new(());
-
     (0..ntask).into_par_iter().try_for_each(|itask| {
         // determine task configuration
         let iset = itask % ntask_i;
@@ -204,12 +195,9 @@ pub fn get_rho_from_homogeneous_braket_with_output_parenh(
             *&mut out_local.i_mut((.., 5)) += tau_contrib;
         }
 
-        // write back with lock
-        {
-            let _lock = guard.lock().unwrap();
-            let mut out = unsafe { out.force_mut() };
-            out.i_mut((start..end, .., iset)).assign(&out_local);
-        }
+        // write back (should not race by design)
+        let mut out = unsafe { out.force_mut() };
+        out.i_mut((start..end, .., iset)).assign(&out_local);
 
         // return buffers to pool
         scr1_pool.put(scr1_buf);
@@ -268,9 +256,6 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_parenh(
     let ntask_grid = ngrid.div_ceil(NGRIDS_CHUNK);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
-
-    // mutex for write-back
-    let guard = Mutex::new(());
 
     (0..ntask).into_par_iter().try_for_each(|itask| {
         // determine task configuration
@@ -339,12 +324,9 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_parenh(
             *&mut out_local.i_mut((.., 5)) += tau_contrib;
         }
 
-        // write back with lock
-        {
-            let _lock = guard.lock().unwrap();
-            let mut out = unsafe { out.force_mut() };
-            out.i_mut((start..end, .., iset)).assign(&out_local);
-        }
+        // write back (should not race by design)
+        let mut out = unsafe { out.force_mut() };
+        out.i_mut((start..end, .., iset)).assign(&out_local);
 
         // return buffers to pool
         scr1_pool.put(scr1_buf);
@@ -405,9 +387,6 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output_parenh(
     let ntask_grid = ngrid.div_ceil(NGRIDS_CHUNK);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
-
-    // mutex for write-back
-    let guard = Mutex::new(());
 
     (0..ntask).into_par_iter().try_for_each(|itask| {
         // determine task configuration
@@ -476,12 +455,9 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output_parenh(
             *&mut out_local.i_mut((.., 5)) += tau_contrib;
         }
 
-        // write back with lock
-        {
-            let _lock = guard.lock().unwrap();
-            let mut out = unsafe { out.force_mut() };
-            out.i_mut((start..end, .., iset)).assign(&out_local);
-        }
+        // write back (should not race by design)
+        let mut out = unsafe { out.force_mut() };
+        out.i_mut((start..end, .., iset)).assign(&out_local);
 
         // return buffers to pool
         scr1_pool.put(scr1_buf);
