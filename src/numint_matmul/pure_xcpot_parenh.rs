@@ -120,7 +120,7 @@ pub fn rks_vxc_pot_with_output_parenh(
     // vxc_eff contraction
     let vxc_contracted = weights * vxc_eff;
 
-    // buffer creation
+    // buffer pool initialization
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
@@ -134,18 +134,21 @@ pub fn rks_vxc_pot_with_output_parenh(
     // atomic guard to avoid racing write
     let guard = Mutex::new(());
 
-    (0..ntask).into_par_iter().try_for_each(|i| {
+    (0..ntask).into_par_iter().try_for_each(|itask| {
+        // determine task configuration
+        let igrid = itask;
+
         // determine the grid chunk for this task
-        let start = i * NGRIDS_CHUNK;
-        let end = ((i + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * NGRIDS_CHUNK;
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
         let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
 
         // perform actual evaulation
-        let vxc_contracted_chunk = vxc_contracted.i((start..end, ..));
-        let ao_chunk = ao.i((start..end, .., ..));
+        let vxc_contracted_chunk = vxc_contracted.i(start..end);
+        let ao_chunk = ao.i(start..end);
         contract_ao_wv_without_symmetrize(
             den_type,
             vxc_contracted_chunk.view(),
@@ -169,5 +172,95 @@ pub fn rks_vxc_pot_with_output_parenh(
     // finally symmetrize the output
     let vxc_buf = vxc.swapaxes(0, 1).to_owned();
     *&mut vxc += vxc_buf;
+    Ok(())
+}
+
+pub fn rks_fxc_pot_with_output_parenh(
+    den_type: NIDenType,
+    fxc_eff: TsrView,
+    rho1: TsrView,
+    ao: TsrView,
+    weights: TsrView,
+    mut fxc: TsrMut,
+) -> Result<(), NIError> {
+    ni_check_shape!(rho1.ndim(), 3, "rho1 tensor must be 3-dim")?;
+    let nset = rho1.shape()[2];
+    let nvar = rho1.shape()[1];
+    let ngrids = rho1.shape()[0];
+    ni_check_shape!(fxc_eff.shape(), [ngrids, nvar, nvar], "fxc_eff shape mismatch")?;
+    ni_check_shape!(weights.shape(), [ngrids], "Weights shape mismatch")?;
+    ni_check_shape!(den_type.num_nvar(), nvar, "Dimension mismatch for input density type")?;
+    ni_check_shape!(ao.ndim(), 3, "AO tensor must be 3-dim")?;
+    ni_check_shape!(ao.shape()[0], ngrids, "AO grids dimension mismatch")?;
+    ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+    let nao = ao.shape()[1];
+    ni_check_shape!(fxc.shape(), [nao, nao, nset], "Output shape mismatch")?;
+
+    if den_type == LAPL {
+        return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
+    }
+
+    // fxc_eff contraction
+    let fxc_eff_weighted = &weights * &fxc_eff;
+
+    // buffer pool initialization
+    const NGRIDS_CHUNK: usize = 384;
+    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_pool = BufferPool::new(buffer_init);
+    let vxc_init = || vec![0.0; nao * nao];
+    let vxc_pool = BufferPool::new(vxc_init);
+
+    // task numbers
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_i = nset;
+    let ntask = ntask_grid * ntask_i;
+
+    // atomic guard to avoid racing write
+    let guard = (0..ntask_i).map(|_| Mutex::new(())).collect_vec();
+
+    (0..ntask).into_par_iter().try_for_each(|itask| {
+        // determine task configuration
+        let i = itask % ntask_i;
+        let igrid = itask / ntask_i;
+
+        // determine the grid chunk for this task
+        let start = igrid * NGRIDS_CHUNK;
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+
+        // get buffer from pool
+        let mut buf = buffer_pool.get();
+        let mut vxc_local = rt::asarray((vxc_pool.get(), [nao, nao], ao.device()));
+
+        // perform actual evaluation
+        let rho1_chunk = rho1.i((start..end, .., None, i));
+        let fxc_eff_weighted_chunk = fxc_eff_weighted.i(start..end);
+        let fxc_contracted_chunk = (&fxc_eff_weighted_chunk * rho1_chunk).sum_axes(1);
+        let ao_chunk = ao.i(start..end);
+        contract_ao_wv_without_symmetrize(
+            den_type,
+            fxc_contracted_chunk.view(),
+            ao_chunk.view(),
+            vxc_local.view_mut(),
+            &mut buf,
+        )?;
+
+        // write back with lock
+        let lock = guard[i].lock().unwrap();
+        let mut fxc = unsafe { fxc.force_mut() };
+        *&mut fxc.i_mut((.., .., i)) += &vxc_local;
+        drop(lock);
+
+        // return buffer to pool
+        buffer_pool.put(buf);
+        vxc_pool.put(vxc_local.into_shape(-1).into_raw());
+        Ok(())
+    })?;
+
+    // finally symmetrize the output
+    let mut fxc_buf: Tsr = rt::zeros(([nao, nao], fxc.device()));
+    for i in 0..nset {
+        fxc_buf.assign(&fxc.i((.., .., i)).t());
+        *&mut fxc.i_mut((.., .., i)) += &fxc_buf;
+    }
     Ok(())
 }

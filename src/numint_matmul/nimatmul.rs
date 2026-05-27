@@ -183,8 +183,7 @@ impl<'a> NIMatMul<'a> {
         if spin == 0 {
             let nset = rho1.shape()[2];
             let mut out = rt::zeros(([nao, nao, nset], &device));
-            let mut buf = vec![0.0; weights_data.len() * nao];
-            rks_fxc_pot_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
+            rks_fxc_pot_with_output_parenh(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         } else {
             let nset = rho1.shape()[3];
