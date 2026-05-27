@@ -59,7 +59,7 @@ fn test_ch2_xcpot() {
     let rho2: Tsr = ni_obj.make_rho_from_dm(&dm2_list, RHO).unwrap().into_shape([ngrids, 1, 2, ncomp2]);
 
     let xc_func = LibXCFunctional::from_identifier("LDA_X", Polarized);
-    let xc_eff = libxc_eval_eff_serial(&xc_func, rho0.view(), 3).unwrap();
+    let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
     let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
     let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &weights).sum();
     let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), RHO, 1).unwrap();
@@ -79,9 +79,9 @@ fn test_ch2_xcpot() {
 
     let time = std::time::Instant::now();
     let xc_func = LibXCFunctional::from_identifier("GGA_X_PBE", Polarized);
-    let xc_eff = libxc_eval_eff_serial(&xc_func, rho0.view(), 3).unwrap();
+    let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
     let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
-    println!("SIGMA libxc_eval_eff_serial time: {:?}", time.elapsed());
+    println!("SIGMA libxc_eval_eff time: {:?}", time.elapsed());
 
     let time = std::time::Instant::now();
     let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &weights).sum();
@@ -104,9 +104,9 @@ fn test_ch2_xcpot() {
 
     let time = std::time::Instant::now();
     let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Polarized);
-    let xc_eff = libxc_eval_eff_serial(&xc_func, rho0.view(), 3).unwrap();
+    let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
     let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
-    println!("TAU libxc_eval_eff_serial time: {:?}", time.elapsed());
+    println!("TAU libxc_eval_eff time: {:?}", time.elapsed());
 
     let time = std::time::Instant::now();
     let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &weights).sum();
