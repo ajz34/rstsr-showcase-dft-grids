@@ -36,24 +36,36 @@ fn contract_ao_wv_without_buf(
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
     }
 
-    // clean notation of slice
-    use std::ops::RangeFull;
-    const IA: [(RangeFull, RangeFull, usize); 5] = [(.., .., 0), (.., .., 1), (.., .., 2), (.., .., 3), (.., .., 4)];
-    const IW: [(RangeFull, usize); 5] = [(.., 0), (.., 1), (.., 2), (.., 3), (.., 4)];
+    // clean notation of slice, just for readability
+
+    /// Macro for slicing AO tensor with the last index.
+    /// Returns [ngrids, nao] view for the specified component index.
+    macro_rules! ao_ {
+        [$idx:expr] => {
+            ao.i((.., .., $idx))
+        };
+    }
+    /// Macro for slicing weight vector with the last index.
+    /// Returns [ngrids] view for the specified component index.
+    macro_rules! wv_ {
+        [$idx:expr] => {
+            wv.i((.., $idx))
+        };
+    }
 
     // RHO contribution
-    out += 0.5 * ao.i(IA[0]).t() % (wv.i(IW[0]) * ao.i(IA[0]));
+    out += 0.5 * ao_![0].t() % (wv_![0] * ao_![0]);
     // SIGMA contribution
     if matches!(den_type, SIGMA | TAU) {
-        out += ao.i(IA[1]).t() % (wv.i(IW[1]) * ao.i(IA[0]));
-        out += ao.i(IA[2]).t() % (wv.i(IW[2]) * ao.i(IA[0]));
-        out += ao.i(IA[3]).t() % (wv.i(IW[3]) * ao.i(IA[0]));
+        out += ao_![1].t() % (wv_![1] * ao_![0]);
+        out += ao_![2].t() % (wv_![2] * ao_![0]);
+        out += ao_![3].t() % (wv_![3] * ao_![0]);
     }
     // TAU contribution
     if matches!(den_type, TAU) {
-        out += 0.25 * ao.i(IA[1]).t() % (wv.i(IW[4]) * ao.i(IA[1]));
-        out += 0.25 * ao.i(IA[2]).t() % (wv.i(IW[4]) * ao.i(IA[2]));
-        out += 0.25 * ao.i(IA[3]).t() % (wv.i(IW[4]) * ao.i(IA[3]));
+        out += 0.25 * ao_![1].t() % (wv_![4] * ao_![1]);
+        out += 0.25 * ao_![2].t() % (wv_![4] * ao_![2]);
+        out += 0.25 * ao_![3].t() % (wv_![4] * ao_![3]);
     }
     let out_t = out.t().to_owned();
     out += &out_t;

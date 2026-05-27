@@ -45,7 +45,7 @@ fn test_h2o_xcpot() {
     let rho1 = ni_obj.make_rho_from_dm(&dm1_list, RHO).unwrap();
     let rho2 = ni_obj.make_rho_from_dm(&dm2_list, RHO).unwrap();
 
-    let xc_func = LibXCFunctional::from_identifier("lda_x", Unpolarized);
+    let xc_func = LibXCFunctional::from_identifier("LDA_X", Unpolarized);
     let xc_eff = libxc_eval_eff_serial(&xc_func, rho0.view(), 3).unwrap();
     let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
     let exc = (exc_eff * rho0.i((.., 0)) * &weights).sum();
@@ -54,4 +54,19 @@ fn test_h2o_xcpot() {
     assert!((exc - -8.1384975323).abs() < 1e-6);
     assert!((fp(vxc.view()) - -27.2331156537).abs() < 1e-6);
     assert!((fp(fxc.view()) - -0.09693300035135462).abs() < 1e-6);
+
+    // --- sigma (gga) ---
+    let rho0 = ni_obj.make_rho_from_dm(&[dm0.view()], SIGMA).unwrap().into_squeeze(-1);
+    let rho1 = ni_obj.make_rho_from_dm(&dm1_list, SIGMA).unwrap();
+    let rho2 = ni_obj.make_rho_from_dm(&dm2_list, SIGMA).unwrap();
+
+    let xc_func = LibXCFunctional::from_identifier("GGA_X_PBE", Unpolarized);
+    let xc_eff = libxc_eval_eff_serial(&xc_func, rho0.view(), 3).unwrap();
+    let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
+    let exc = (exc_eff * rho0.i((.., 0)) * &weights).sum();
+    let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), SIGMA, 0).unwrap();
+    let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), SIGMA, 0).unwrap();
+    assert!((exc - -8.9542650216).abs() < 1e-6);
+    assert!((fp(vxc.view()) - -28.6270372279).abs() < 1e-6);
+    assert!((fp(fxc.view()) - -0.10389233031803395).abs() < 1e-6);
 }
