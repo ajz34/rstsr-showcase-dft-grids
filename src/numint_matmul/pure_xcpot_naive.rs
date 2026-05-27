@@ -19,7 +19,6 @@ fn contract_ao_wv_without_buf_naive(
     wv: TsrView,
     ao: TsrView,
     mut out: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     ni_check_shape!(wv.ndim(), 2, "Weight vector must be 2-dim")?;
     let nvar = wv.shape()[1];
@@ -31,7 +30,6 @@ fn contract_ao_wv_without_buf_naive(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     ni_check_shape!(out.shape(), [nao, nao], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
 
     if den_type == LAPL {
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
@@ -174,7 +172,6 @@ pub fn rks_vxc_pot_with_output_naive(
     ao: TsrView,
     weights: TsrView,
     vxc: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     ni_check_shape!(vxc_eff.ndim(), 2, "Effective potential must be 2-dim")?;
     let nvar = vxc_eff.shape()[1];
@@ -186,12 +183,12 @@ pub fn rks_vxc_pot_with_output_naive(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
     let nao = ao.shape()[1];
     ni_check_shape!(vxc.shape(), [nao, nao], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
 
     if den_type == LAPL {
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
     }
 
+    let buf = &mut vec![0.0; ngrids * nao];
     let vxc_contracted = weights * vxc_eff;
     contract_ao_wv_naive(den_type, vxc_contracted.view(), ao, vxc, buf)
 }
@@ -203,7 +200,6 @@ pub fn rks_fxc_pot_with_output_naive(
     ao: TsrView,
     weights: TsrView,
     mut fxc: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 3, "rho1 tensor must be 3-dim")?;
     let nset = rho1.shape()[2];
@@ -217,12 +213,12 @@ pub fn rks_fxc_pot_with_output_naive(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
     let nao = ao.shape()[1];
     ni_check_shape!(fxc.shape(), [nao, nao, nset], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
 
     if den_type == LAPL {
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
     }
 
+    let buf = &mut vec![0.0; ngrids * nao];
     let fxc_eff_weighted = &weights * &fxc_eff;
     for i in 0..nset {
         let fxc_contracted = (&fxc_eff_weighted * rho1.i((.., .., None, i))).sum_axes(1);
@@ -252,7 +248,6 @@ pub fn rks_kxc_pot_with_output_naive(
     ao: TsrView,
     weights: TsrView,
     mut kxc: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 3, "rho1 tensor must be 3-dim")?;
     ni_check_shape!(rho2.ndim(), 3, "rho2 tensor must be 3-dim")?;
@@ -269,12 +264,12 @@ pub fn rks_kxc_pot_with_output_naive(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
     let nao = ao.shape()[1];
     ni_check_shape!(kxc.shape(), [nao, nao, nset1, nset2], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
 
     if den_type == LAPL {
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
     }
 
+    let buf = &mut vec![0.0; ngrids * nao];
     let kxc_eff_weighted = &weights * &kxc_eff;
 
     for i2 in 0..nset2 {
@@ -307,7 +302,6 @@ pub fn uks_vxc_pot_with_output_naive(
     ao: TsrView,
     weights: TsrView,
     mut vxc: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     ni_check_shape!(vxc_eff.ndim(), 3, "Effective potential must be 3-dim")?;
     let nvar = vxc_eff.shape()[1];
@@ -320,12 +314,12 @@ pub fn uks_vxc_pot_with_output_naive(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
     let nao = ao.shape()[1];
     ni_check_shape!(vxc.shape(), [nao, nao, 2], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
 
     if den_type == LAPL {
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
     }
 
+    let buf = &mut vec![0.0; ngrids * nao];
     for s in 0..2 {
         let vxc_contracted = &weights * vxc_eff.i((.., .., s));
         contract_ao_wv_naive(den_type, vxc_contracted.view(), ao.view(), vxc.i_mut((.., .., s)), buf)?;
@@ -351,7 +345,6 @@ pub fn uks_fxc_pot_with_output_naive(
     ao: TsrView,
     weights: TsrView,
     mut fxc: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 4, "rho1 tensor must be 4-dim")?;
     let nset = rho1.shape()[3];
@@ -366,12 +359,12 @@ pub fn uks_fxc_pot_with_output_naive(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
     let nao = ao.shape()[1];
     ni_check_shape!(fxc.shape(), [nao, nao, 2, nset], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
 
     if den_type == LAPL {
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
     }
 
+    let buf = &mut vec![0.0; ngrids * nao];
     let fxc_eff_weighted = &weights * &fxc_eff;
     for i in 0..nset {
         for s in 0..2 {
@@ -407,7 +400,6 @@ pub fn uks_kxc_pot_with_output_naive(
     ao: TsrView,
     weights: TsrView,
     mut kxc: TsrMut,
-    buf: &mut [f64],
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 4, "rho1 tensor must be 4-dim")?;
     ni_check_shape!(rho2.ndim(), 4, "rho2 tensor must be 4-dim")?;
@@ -425,12 +417,12 @@ pub fn uks_kxc_pot_with_output_naive(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
     let nao = ao.shape()[1];
     ni_check_shape!(kxc.shape(), [nao, nao, 2, nset1, nset2], "Output shape mismatch")?;
-    ni_check_shape!(buf.len() >= ngrids * nao, "Buffer length insufficient")?;
 
     if den_type == LAPL {
         return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
     }
 
+    let buf = &mut vec![0.0; ngrids * nao];
     let kxc_eff_weighted = &weights * &kxc_eff;
     for i2 in 0..nset2 {
         for i1 in 0..nset1 {
