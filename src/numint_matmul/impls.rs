@@ -154,7 +154,10 @@ impl<'a> NIMatMul<'a> {
             rks_vxc_pot_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
             Ok(out)
         } else {
-            todo!()
+            let mut out = rt::zeros(([nao, nao, 2], &device));
+            let mut buf = vec![0.0; weights_data.len() * nao];
+            uks_vxc_pot_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
+            Ok(out)
         }
     }
 
@@ -178,7 +181,46 @@ impl<'a> NIMatMul<'a> {
             rks_fxc_pot_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
             Ok(out)
         } else {
-            todo!()
+            let nset = rho1.shape()[3];
+            let mut out = rt::zeros(([nao, nao, 2, nset], &device));
+            let mut buf = vec![0.0; weights_data.len() * nao];
+            uks_fxc_pot_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), &mut buf)?;
+            Ok(out)
+        }
+    }
+
+    pub fn make_kxc_pot_with_eff(
+        &mut self,
+        kxc_eff: TsrView,
+        rho1: TsrView,
+        rho2: TsrView,
+        den_type: NIDenType,
+        spin: usize,
+    ) -> Result<Tsr, NIError> {
+        let weights_data = self.weights.clone();
+        let ao = self.get_cached_ao(den_type.num_ao_deriv());
+        let nao = ao.shape()[1];
+        let device = ao.device().clone();
+        let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
+
+        if spin == 0 {
+            let nset1 = rho1.shape()[2];
+            let nset2 = rho2.shape()[2];
+            let mut out = rt::zeros(([nao, nao, nset1, nset2], &device));
+            let mut buf = vec![0.0; weights_data.len() * nao];
+            rks_kxc_pot_with_output(
+                den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), &mut buf,
+            )?;
+            Ok(out)
+        } else {
+            let nset1 = rho1.shape()[3];
+            let nset2 = rho2.shape()[3];
+            let mut out = rt::zeros(([nao, nao, 2, nset1, nset2], &device));
+            let mut buf = vec![0.0; weights_data.len() * nao];
+            uks_kxc_pot_with_output(
+                den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), &mut buf,
+            )?;
+            Ok(out)
         }
     }
 }
