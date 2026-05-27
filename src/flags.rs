@@ -78,6 +78,10 @@ impl From<Option<usize>> for NIPar {
 
 impl From<bool> for NIPar {
     fn from(parallel: bool) -> Self {
-        if parallel { NIPar::Par { chunk_size: None } } else { NIPar::Serial }
+        if parallel {
+            NIPar::Par { chunk_size: None }
+        } else {
+            NIPar::Serial
+        }
     }
 }

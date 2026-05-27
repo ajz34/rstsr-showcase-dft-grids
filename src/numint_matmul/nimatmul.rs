@@ -30,11 +30,11 @@ impl<'a> NIMatMul<'a> {
         let filter_closure = |k: &String| k.strip_prefix("ao_deriv").and_then(|s| s.parse::<usize>().ok());
         let max_cached_deriv = self.cache_tensor.keys().filter_map(filter_closure).max();
         // if the requested deriv is already cached, return it
-        if let Some(max_deriv) = max_cached_deriv
-            && max_deriv >= deriv
-        {
-            let cache_key = format!("ao_deriv{}", deriv);
-            return self.cache_tensor.get(&cache_key).unwrap().i((.., .., ..AO_DERIV_DIM[deriv]));
+        if let Some(max_deriv) = max_cached_deriv {
+            if max_deriv >= deriv {
+                let cache_key = format!("ao_deriv{}", deriv);
+                return self.cache_tensor.get(&cache_key).unwrap().i((.., .., ..AO_DERIV_DIM[deriv]));
+            }
         }
 
         // otherwise, compute and cache all missing ao deriv up to the requested one
