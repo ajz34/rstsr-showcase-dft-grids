@@ -1,7 +1,7 @@
 mod test_util;
 
-use libcint::prelude::*;
 use libxc::prelude::*;
+use rstest::*;
 use rstsr::prelude::*;
 use rstsr_showcase_dft_grids::prelude::*;
 use test_util::*;
@@ -9,114 +9,125 @@ use test_util::*;
 use LibXCSpin::*;
 use NIDenType::*;
 
-type DeviceTsr = DeviceFaer;
-type Tsr<T = f64> = Tensor<T, DeviceTsr, IxD>;
+type Tsr<T = f64> = Tensor<T, DeviceFaer, IxD>;
 
-#[test]
-fn test_ch2_xcpot() {
-    let mol_token = r#"
-        atom = "C; H 1 0.94; H 1 0.94 2 104.5"
-        basis = "def2-TZVP"
-    "#;
-    let coords = read_npz("ch2.npz", "coords").into_reverse_axes();
-    let weights = read_npz("ch2.npz", "weights").into_reverse_axes();
-    let rdm1 = read_npz("ch2.npz", "rdm1").into_reverse_axes();
-    let cint = CIntMol::from_toml(mol_token);
-    let coords_array = coords.to_owned().into_pack_array::<3>(0).into_vec();
-    let mut ni_obj = NIMatMul::new(&cint.cint, &coords_array, &weights.to_vec());
+// ---------------------------------------------------------------------------
+// Fixtures (≡ Python setUpModule + TestXCPot.setUpClass)
+// ---------------------------------------------------------------------------
 
-    let device = rdm1.device().clone();
+/// Perturbed density matrices for UKS, precomputed once.
+pub struct Ch2PerturbedDM {
+    pub dm1_flat: Tsr,
+    pub dm2_flat: Tsr,
+    pub ncomp1: usize,
+    pub ncomp2: usize,
+}
+
+#[fixture]
+#[once]
+fn ch2() -> Ch2Molecule {
+    Ch2Molecule::load()
+}
+
+#[fixture]
+#[once]
+fn perturbed_dm(ch2: &Ch2Molecule) -> Ch2PerturbedDM {
+    let device = ch2.rdm1.device().clone();
     let get_intor = |name: &str| {
-        let (out, shape) = ni_obj.cint.integrate(name, None, None).into();
+        let (out, shape) = ch2.cint().integrate(name, None, None).into();
         rt::asarray((out, shape, &device))
     };
-
-    // Construct perturbed DMs for UKS
-    // dm1_broadcast: [nao, nao, 2_spin, 3_comp], dm2_broadcast: [nao, nao, 2_spin, 9_comp]
     let int1e_r_giao: Tsr = get_intor("int1e_r") + get_intor("int1e_giao_irjxp");
     let int1e_rr: Tsr = get_intor("int1e_rr");
-    let ncomp1 = int1e_r_giao.shape()[int1e_r_giao.ndim() - 1]; // 3
-    let ncomp2 = int1e_rr.shape()[int1e_rr.ndim() - 1]; // 9
-    let nao = rdm1.shape()[0];
+    let ncomp1 = int1e_r_giao.shape()[int1e_r_giao.ndim() - 1];
+    let ncomp2 = int1e_rr.shape()[int1e_rr.ndim() - 1];
+    let nao = ch2.rdm1.shape()[0];
 
-    let dm1_raw = int1e_r_giao.i((.., .., None, ..)) * rdm1.i((.., .., .., None)); // [nao, nao, 1, 3] * [nao, nao, 2, 1] → [nao, nao, 2, 3]
+    let dm1_raw = int1e_r_giao.i((.., .., None, ..)) * ch2.rdm1.i((.., .., .., None));
     let dm1: Tsr = 0.5 * (&dm1_raw + dm1_raw.swapaxes(0, 1));
-    let dm2_raw = int1e_rr.i((.., .., None, ..)) * rdm1.i((.., .., .., None)); // [nao, nao, 1, 9] * [nao, nao, 2, 1] → [nao, nao, 2, 9]
+    let dm2_raw = int1e_rr.i((.., .., None, ..)) * ch2.rdm1.i((.., .., .., None));
     let dm2: Tsr = 0.5 * (&dm2_raw + dm2_raw.swapaxes(0, 1));
 
-    let dm0_list = [rdm1.i((.., .., 0)), rdm1.i((.., .., 1))];
-    let ngrids = weights.shape()[0];
-    // Flatten spin+comp axes for make_rho_from_dm: column-major merge gives
-    // (s=0,c=0),(s=1,c=0),(s=0,c=1),...
     let dm1_flat: Tsr = dm1.into_shape([nao, nao, 2 * ncomp1]);
     let dm2_flat: Tsr = dm2.into_shape([nao, nao, 2 * ncomp2]);
-    let dm1_list = dm1_flat.axes_iter(-1).collect::<Vec<_>>();
-    let dm2_list = dm2_flat.axes_iter(-1).collect::<Vec<_>>();
 
-    // --- rho (lda, spin=1) ---
-    let rho0 = ni_obj.make_rho_from_dm(&dm0_list, RHO).unwrap();
-    let rho1: Tsr = ni_obj.make_rho_from_dm(&dm1_list, RHO).unwrap().into_shape([ngrids, 1, 2, ncomp1]);
-    let rho2: Tsr = ni_obj.make_rho_from_dm(&dm2_list, RHO).unwrap().into_shape([ngrids, 1, 2, ncomp2]);
+    Ch2PerturbedDM { dm1_flat, dm2_flat, ncomp1, ncomp2 }
+}
 
-    let xc_func = LibXCFunctional::from_identifier("LDA_X", Polarized);
-    let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
-    let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
-    let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &weights).sum();
-    let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), RHO, 1).unwrap();
-    let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), RHO, 1).unwrap();
-    let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), RHO, 1).unwrap();
-    assert!((exc - -4.7040426008).abs() < 1e-6);
-    assert!((fp(vxc.view()) - -12.7427734694).abs() < 1e-6);
-    assert!((fp(fxc.view()) - -0.2560478462754152).abs() < 1e-6);
-    assert!((fp(kxc.view()) - 0.40388776601225995).abs() < 1e-6);
+// ---------------------------------------------------------------------------
+// TestXCPot
+// ---------------------------------------------------------------------------
 
-    // --- sigma (gga, spin=1) ---
-    let time = std::time::Instant::now();
-    let rho0 = ni_obj.make_rho_from_dm(&dm0_list, SIGMA).unwrap();
-    let rho1: Tsr = ni_obj.make_rho_from_dm(&dm1_list, SIGMA).unwrap().into_shape([ngrids, 4, 2, ncomp1]);
-    let rho2: Tsr = ni_obj.make_rho_from_dm(&dm2_list, SIGMA).unwrap().into_shape([ngrids, 4, 2, ncomp2]);
-    println!("SIGMA make_rho_from_dm time: {:?}", time.elapsed());
+mod test_xcpot {
+    use super::*;
 
-    let time = std::time::Instant::now();
-    let xc_func = LibXCFunctional::from_identifier("GGA_X_PBE", Polarized);
-    let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
-    let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
-    println!("SIGMA libxc_eval_eff time: {:?}", time.elapsed());
+    fn dm0_list(ch2: &Ch2Molecule) -> [TsrView<'_>; 2] {
+        [ch2.rdm1.i((.., .., 0)), ch2.rdm1.i((.., .., 1))]
+    }
 
-    let time = std::time::Instant::now();
-    let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &weights).sum();
-    let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), SIGMA, 1).unwrap();
-    let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), SIGMA, 1).unwrap();
-    let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), SIGMA, 1).unwrap();
-    println!("SIGMA make_?xc_pot_with_eff time: {:?}", time.elapsed());
+    #[rstest]
+    fn test_rho(ch2: &Ch2Molecule, perturbed_dm: &Ch2PerturbedDM) {
+        let mut ni_obj = ch2.build_ni_obj();
+        let rho0 = ni_obj.make_rho_from_dm(&dm0_list(ch2), RHO).unwrap();
+        let dm1_list: Vec<_> = perturbed_dm.dm1_flat.axes_iter(-1).collect();
+        let dm2_list: Vec<_> = perturbed_dm.dm2_flat.axes_iter(-1).collect();
+        let rho1: Tsr = ni_obj.make_rho_from_dm(&dm1_list, RHO).unwrap().into_shape([ch2.ngrids, 1, 2, perturbed_dm.ncomp1]);
+        let rho2: Tsr = ni_obj.make_rho_from_dm(&dm2_list, RHO).unwrap().into_shape([ch2.ngrids, 1, 2, perturbed_dm.ncomp2]);
 
-    assert!((exc - -5.2725625947).abs() < 1e-6);
-    assert!((fp(vxc.view()) - -13.134537099).abs() < 1e-6);
-    assert!((fp(fxc.view()) - -0.13792205114629885).abs() < 1e-6);
-    assert!((fp(kxc.view()) - 0.2770362015666589).abs() < 1e-6);
+        let xc_func = LibXCFunctional::from_identifier("LDA_X", Polarized);
+        let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
+        let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
+        let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &ch2.weights).sum();
+        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), RHO, 1).unwrap();
+        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), RHO, 1).unwrap();
+        let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), RHO, 1).unwrap();
+        assert!((exc - -4.7040426008).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(),-12.7427734694, 1e-6);
+        fp_assert_eq!(fxc.view(),-0.2560478462754152, 1e-6);
+        fp_assert_eq!(kxc.view(),0.40388776601225995, 1e-6);
+    }
 
-    // --- tau (mgga, spin=1) ---
-    let time = std::time::Instant::now();
-    let rho0 = ni_obj.make_rho_from_dm(&dm0_list, TAU).unwrap();
-    let rho1: Tsr = ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap().into_shape([ngrids, 5, 2, ncomp1]);
-    let rho2: Tsr = ni_obj.make_rho_from_dm(&dm2_list, TAU).unwrap().into_shape([ngrids, 5, 2, ncomp2]);
-    println!("TAU make_rho_from_dm time: {:?}", time.elapsed());
+    #[rstest]
+    fn test_sigma(ch2: &Ch2Molecule, perturbed_dm: &Ch2PerturbedDM) {
+        let mut ni_obj = ch2.build_ni_obj();
+        let rho0 = ni_obj.make_rho_from_dm(&dm0_list(ch2), SIGMA).unwrap();
+        let dm1_list: Vec<_> = perturbed_dm.dm1_flat.axes_iter(-1).collect();
+        let dm2_list: Vec<_> = perturbed_dm.dm2_flat.axes_iter(-1).collect();
+        let rho1: Tsr = ni_obj.make_rho_from_dm(&dm1_list, SIGMA).unwrap().into_shape([ch2.ngrids, 4, 2, perturbed_dm.ncomp1]);
+        let rho2: Tsr = ni_obj.make_rho_from_dm(&dm2_list, SIGMA).unwrap().into_shape([ch2.ngrids, 4, 2, perturbed_dm.ncomp2]);
 
-    let time = std::time::Instant::now();
-    let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Polarized);
-    let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
-    let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
-    println!("TAU libxc_eval_eff time: {:?}", time.elapsed());
+        let xc_func = LibXCFunctional::from_identifier("GGA_X_PBE", Polarized);
+        let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
+        let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
+        let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &ch2.weights).sum();
+        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), SIGMA, 1).unwrap();
+        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), SIGMA, 1).unwrap();
+        let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), SIGMA, 1).unwrap();
+        assert!((exc - -5.2725625947).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(),-13.134537099, 1e-6);
+        fp_assert_eq!(fxc.view(),-0.13792205114629885, 1e-6);
+        fp_assert_eq!(kxc.view(),0.2770362015666589, 1e-6);
+    }
 
-    let time = std::time::Instant::now();
-    let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &weights).sum();
-    let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), TAU, 1).unwrap();
-    let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, 1).unwrap();
-    let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), TAU, 1).unwrap();
-    println!("TAU make_?xc_pot_with_eff time: {:?}", time.elapsed());
+    #[rstest]
+    fn test_tau(ch2: &Ch2Molecule, perturbed_dm: &Ch2PerturbedDM) {
+        let mut ni_obj = ch2.build_ni_obj();
+        let rho0 = ni_obj.make_rho_from_dm(&dm0_list(ch2), TAU).unwrap();
+        let dm1_list: Vec<_> = perturbed_dm.dm1_flat.axes_iter(-1).collect();
+        let dm2_list: Vec<_> = perturbed_dm.dm2_flat.axes_iter(-1).collect();
+        let rho1: Tsr = ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap().into_shape([ch2.ngrids, 5, 2, perturbed_dm.ncomp1]);
+        let rho2: Tsr = ni_obj.make_rho_from_dm(&dm2_list, TAU).unwrap().into_shape([ch2.ngrids, 5, 2, perturbed_dm.ncomp2]);
 
-    assert!((exc - -4.9638946892).abs() < 1e-6);
-    assert!((fp(vxc.view()) - -12.384391087).abs() < 1e-6);
-    assert!((fp(fxc.view()) - 31.692895267010428).abs() < 1e-5);
-    assert!((fp(kxc.view()) - 6528.81912736829).abs() < 1e-4);
+        let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Polarized);
+        let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
+        let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
+        let exc = (exc_eff * (rho0.i((.., 0, 0)) + rho0.i((.., 0, 1))) * &ch2.weights).sum();
+        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), TAU, 1).unwrap();
+        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, 1).unwrap();
+        let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), TAU, 1).unwrap();
+        assert!((exc - -4.9638946892).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(),-12.384391087, 1e-6);
+        fp_assert_eq!(fxc.view(),31.692895267010428, 1e-5);
+        fp_assert_eq!(kxc.view(),6528.81912736829, 1e-4);
+    }
 }
