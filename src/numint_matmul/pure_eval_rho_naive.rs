@@ -89,13 +89,13 @@ pub fn get_rho_from_homogeneous_braket_with_output_naive(
         ni_check_shape!(nao, bra.shape()[0], "AO dimension must match braket dimension")?;
     }
     let nset = bra_list.len();
-    let ngrid = ao.shape()[0];
+    let ngrids = ao.shape()[0];
 
-    ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
+    ni_check_shape!(out.shape().clone(), [ngrids, den_type.num_nvar(), nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     for (iset, bra) in bra_list.iter().enumerate() {
-        // rho part: scr1 = ao_0 @ bra → [ngrid, nocc]
+        // rho part: scr1 = ao_0 @ bra → [ngrids, nocc]
         let scr1 = ao.i((.., .., 0)) % bra;
         *&mut out.i_mut((.., 0, iset)) += (&scr1 * &scr1).sum_axes(1);
         // sigma & tau parts
@@ -158,9 +158,9 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_naive(
         ni_check_shape!(ket.shape()[1], nocc, "Ket second dimension must match bra")?;
     }
     let nset = ket_list.len();
-    let ngrid = ao.shape()[0];
+    let ngrids = ao.shape()[0];
 
-    ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
+    ni_check_shape!(out.shape().clone(), [ngrids, den_type.num_nvar(), nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // Pre-compute scr1 = ao_0 @ bra (shared across all sets)
@@ -242,9 +242,9 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output_naive(
         ni_check_shape!(bra.shape()[1], ket.shape()[1], "Bra and ket occupation must match")?;
     }
     let nset = bra_list.len();
-    let ngrid = ao.shape()[0];
+    let ngrids = ao.shape()[0];
 
-    ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
+    ni_check_shape!(out.shape().clone(), [ngrids, den_type.num_nvar(), nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     for (iset, (bra, ket)) in bra_list.iter().zip(ket_list.iter()).enumerate() {

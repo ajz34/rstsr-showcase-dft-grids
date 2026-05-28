@@ -68,15 +68,14 @@ impl<'a> NIMatMul<'a> {
     ) -> Result<Tsr, NIError> {
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
-        let ngrid = ao.shape()[0];
+        let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
         for bra in bra_list {
             ni_check_shape!(bra.ndim(), 2, "Each braket must be 2D")?;
             ni_check_shape!(bra.shape()[0], nao, "Bra's first dimension must match AO dimension")?;
         }
-        let _nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
         let nset = bra_list.len();
-        let out_shape = [ngrid, den_type.num_nvar(), nset];
+        let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
         get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out.view_mut())?;
@@ -91,7 +90,7 @@ impl<'a> NIMatMul<'a> {
     ) -> Result<Tsr, NIError> {
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
-        let ngrid = ao.shape()[0];
+        let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
         ni_check_shape!(bra.ndim(), 2, "Bra must be 2D")?;
         ni_check_shape!(bra.shape()[0], nao, "Bra first dimension must match AO dimension")?;
@@ -103,7 +102,7 @@ impl<'a> NIMatMul<'a> {
         }
         let nset = ket_list.len();
 
-        let out_shape = [ngrid, den_type.num_nvar(), nset];
+        let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
         get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out.view_mut())?;
@@ -118,7 +117,7 @@ impl<'a> NIMatMul<'a> {
     ) -> Result<Tsr, NIError> {
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
-        let ngrid = ao.shape()[0];
+        let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
         for (bra, ket) in bra_list.iter().zip(ket_list.iter()) {
             ni_check_shape!(bra.ndim(), 2, "Each bra must be 2D")?;
@@ -127,10 +126,9 @@ impl<'a> NIMatMul<'a> {
             ni_check_shape!(nao, ket.shape()[0], "Ket first dimension must match AO dimension")?;
             ni_check_shape!(bra.shape()[1], ket.shape()[1], "Bra and ket occupation must match")?;
         }
-        let _nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
         let nset = bra_list.len();
 
-        let out_shape = [ngrid, den_type.num_nvar(), nset];
+        let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
         get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out.view_mut())?;

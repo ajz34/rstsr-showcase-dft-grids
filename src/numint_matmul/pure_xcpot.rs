@@ -352,7 +352,7 @@ fn contract_ao_wv_bra(
 
 /// Evaluate XC potential (2nd order, RKS) with fxc_eff, bra transformed (parallel enhanced).
 ///
-/// Bra usually be occupied orbital coefficient (row-major applied to $\mu$),
+/// Bra is usually the occupied orbital coefficient (row-major applied to $\mu$),
 /// which can lower the computational cost.
 ///
 /// # Parameters

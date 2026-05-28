@@ -127,11 +127,11 @@ pub fn get_rho_from_homogeneous_braket_with_output(
     let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
 
     let nset = bra_list.len();
-    let ngrid = ao.shape()[0];
+    let ngrids = ao.shape()[0];
     let nvar = den_type.num_nvar();
     let device = ao.device().clone();
 
-    ni_check_shape!(out.shape().clone(), [ngrid, nvar, nset], "Output shape mismatch")?;
+    ni_check_shape!(out.shape().clone(), [ngrids, nvar, nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
@@ -141,7 +141,7 @@ pub fn get_rho_from_homogeneous_braket_with_output(
     let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
 
     // task numbers
-    let ntask_grid = ngrid.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -152,7 +152,7 @@ pub fn get_rho_from_homogeneous_braket_with_output(
 
         // determine the grid chunk for this task
         let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrid);
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
         let chunk_size = end - start;
 
         let bra = &bra_list[iset];
@@ -238,11 +238,11 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
         ni_check_shape!(ket.shape()[1], nocc, "Ket second dimension must match bra")?;
     }
     let nset = ket_list.len();
-    let ngrid = ao.shape()[0];
+    let ngrids = ao.shape()[0];
     let nvar = den_type.num_nvar();
     let device = ao.device().clone();
 
-    ni_check_shape!(out.shape().clone(), [ngrid, nvar, nset], "Output shape mismatch")?;
+    ni_check_shape!(out.shape().clone(), [ngrids, nvar, nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
@@ -253,7 +253,7 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
     let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
 
     // task numbers
-    let ntask_grid = ngrid.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -264,7 +264,7 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
 
         // determine the grid chunk for this task
         let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrid);
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
         let chunk_size = end - start;
 
         let ket = &ket_list[iset];
@@ -369,11 +369,11 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
         ni_check_shape!(bra.shape()[1], ket.shape()[1], "Bra and ket occupation must match")?;
     }
     let nset = bra_list.len();
-    let ngrid = ao.shape()[0];
+    let ngrids = ao.shape()[0];
     let nvar = den_type.num_nvar();
     let device = ao.device().clone();
 
-    ni_check_shape!(out.shape().clone(), [ngrid, nvar, nset], "Output shape mismatch")?;
+    ni_check_shape!(out.shape().clone(), [ngrids, nvar, nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
@@ -384,7 +384,7 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
     let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
 
     // task numbers
-    let ntask_grid = ngrid.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -395,7 +395,7 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
 
         // determine the grid chunk for this task
         let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrid);
+        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
         let chunk_size = end - start;
 
         let bra = &bra_list[iset];
