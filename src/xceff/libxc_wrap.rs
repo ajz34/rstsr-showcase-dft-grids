@@ -31,9 +31,9 @@ pub fn libxc_eval_inner(
     // sanity check
     // rho must be either [ngrids, 1/4/5/6] or [ngrids, 1/4/5/6, 2]
     match xc_func.spin() {
-        Unpolarized => ni_check_shape!(rho.ndim(), 2, "rho for unpolarized functionals must be a 2D tensor")?,
+        Unpolarized => ni_check_shape!(rho.ndim(), 2, "rho for unpolarized functionals must be a 2-dim tensor")?,
         Polarized => {
-            ni_check_shape!(rho.ndim(), 3, "rho for polarized functionals must be a 3D tensor")?;
+            ni_check_shape!(rho.ndim(), 3, "rho for polarized functionals must be a 3-dim tensor")?;
             ni_check_shape!(rho.shape()[2], 2, "rho for polarized functionals must have last dimension of size 2")?;
         },
     }

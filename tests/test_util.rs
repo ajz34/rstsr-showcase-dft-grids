@@ -43,7 +43,7 @@ pub struct Ch2Molecule {
     pub rdm1: Tsr,
     pub mo_coeff: Tsr,
     pub mo_occ: Tsr,
-    cint_mol: CIntMol,
+    pub cint_mol: CIntMol,
 }
 
 impl Ch2Molecule {
@@ -94,7 +94,7 @@ pub struct H2OMolecule {
     pub rdm1: Tsr,
     pub mo_coeff: Tsr,
     pub mo_occ: Tsr,
-    cint_mol: CIntMol,
+    pub cint_mol: CIntMol,
 }
 
 impl H2OMolecule {

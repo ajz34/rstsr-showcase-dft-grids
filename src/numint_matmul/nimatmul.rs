@@ -71,7 +71,7 @@ impl<'a> NIMatmul<'a> {
         let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
         for dm in dm_list {
-            ni_check_shape!(dm.ndim(), 2, "Each density matrix must be 2D")?;
+            ni_check_shape!(dm.ndim(), 2, "Each density matrix must be 2-dim")?;
             ni_check_shape!(dm.shape()[0..2], [nao, nao], "Density matrix must match AO dimension")?;
         }
         let nset = dm_list.len();
@@ -103,7 +103,7 @@ impl<'a> NIMatmul<'a> {
         let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
         for bra in bra_list {
-            ni_check_shape!(bra.ndim(), 2, "Each braket must be 2D")?;
+            ni_check_shape!(bra.ndim(), 2, "Each braket must be 2-dim")?;
             ni_check_shape!(bra.shape()[0], nao, "Bra's first dimension must match AO dimension")?;
         }
         let nset = bra_list.len();
@@ -135,11 +135,11 @@ impl<'a> NIMatmul<'a> {
 
         let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
-        ni_check_shape!(bra.ndim(), 2, "Bra must be 2D")?;
+        ni_check_shape!(bra.ndim(), 2, "Bra must be 2-dim")?;
         ni_check_shape!(bra.shape()[0], nao, "Bra first dimension must match AO dimension")?;
         let nocc = bra.shape()[1];
         for ket in ket_list {
-            ni_check_shape!(ket.ndim(), 2, "Each ket must be 2D")?;
+            ni_check_shape!(ket.ndim(), 2, "Each ket must be 2-dim")?;
             ni_check_shape!(ket.shape()[0], nao, "Ket first dimension must match AO dimension")?;
             ni_check_shape!(ket.shape()[1], nocc, "Ket second dimension must match bra")?;
         }
@@ -174,8 +174,8 @@ impl<'a> NIMatmul<'a> {
         let ngrids = ao.shape()[0];
         let nao = ao.shape()[1];
         for (bra, ket) in bra_list.iter().zip(ket_list.iter()) {
-            ni_check_shape!(bra.ndim(), 2, "Each bra must be 2D")?;
-            ni_check_shape!(ket.ndim(), 2, "Each ket must be 2D")?;
+            ni_check_shape!(bra.ndim(), 2, "Each bra must be 2-dim")?;
+            ni_check_shape!(ket.ndim(), 2, "Each ket must be 2-dim")?;
             ni_check_shape!(nao, bra.shape()[0], "Bra first dimension must match AO dimension")?;
             ni_check_shape!(nao, ket.shape()[0], "Ket first dimension must match AO dimension")?;
             ni_check_shape!(bra.shape()[1], ket.shape()[1], "Bra and ket occupation must match")?;

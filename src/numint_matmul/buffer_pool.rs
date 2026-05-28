@@ -1,4 +1,3 @@
-#![warn(unused)]
 use std::sync::{Arc, Mutex};
 
 /// A thread-safe buffer pool for reusing buffers of type T.

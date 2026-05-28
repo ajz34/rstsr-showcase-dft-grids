@@ -25,7 +25,7 @@ pub struct PenMolecule {
     pub rdm1: Tsr,
     pub mo_coeff: Tsr,
     pub mo_occ: Tsr,
-    cint_mol: CIntMol,
+    pub cint_mol: CIntMol,
 }
 
 impl PenMolecule {

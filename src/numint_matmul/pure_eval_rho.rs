@@ -17,11 +17,11 @@ pub fn get_rho_from_dm_with_output(
     den_type: NIDenType,
     out: TsrMut,
 ) -> Result<(), NIError> {
-    ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
+    ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
 
     for dm in dm_list {
-        ni_check_shape!(dm.ndim(), 2, "Each density matrix must be 2D")?;
+        ni_check_shape!(dm.ndim(), 2, "Each density matrix must be 2-dim")?;
         ni_check_shape!(dm.shape()[0..2], [nao, nao], "Density matrix must match AO dimension")?;
     }
     let nset = dm_list.len();
@@ -118,11 +118,11 @@ pub fn get_rho_from_homogeneous_braket_with_output(
     den_type: NIDenType,
     out: TsrMut,
 ) -> Result<(), NIError> {
-    ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
+    ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
 
     for bra in bra_list {
-        ni_check_shape!(bra.ndim(), 2, "Each bra must be 2D")?;
+        ni_check_shape!(bra.ndim(), 2, "Each bra must be 2-dim")?;
         ni_check_shape!(nao, bra.shape()[0], "AO dimension must match braket dimension")?;
     }
     let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
@@ -227,15 +227,15 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
     den_type: NIDenType,
     out: TsrMut,
 ) -> Result<(), NIError> {
-    ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
+    ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
 
-    ni_check_shape!(bra.ndim(), 2, "Bra must be 2D")?;
+    ni_check_shape!(bra.ndim(), 2, "Bra must be 2-dim")?;
     ni_check_shape!(nao, bra.shape()[0], "Bra first dimension must match AO dimension")?;
     let nocc = bra.shape()[1];
 
     for ket in ket_list {
-        ni_check_shape!(ket.ndim(), 2, "Each ket must be 2D")?;
+        ni_check_shape!(ket.ndim(), 2, "Each ket must be 2-dim")?;
         ni_check_shape!(nao, ket.shape()[0], "Ket first dimension must match AO dimension")?;
         ni_check_shape!(ket.shape()[1], nocc, "Ket second dimension must match bra")?;
     }
@@ -358,15 +358,15 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
     den_type: NIDenType,
     out: TsrMut,
 ) -> Result<(), NIError> {
-    ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
+    ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
 
     ni_check_shape!(bra_list.len(), ket_list.len(), "bra_list and ket_list must have same length")?;
     let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
 
     for (bra, ket) in bra_list.iter().zip(ket_list.iter()) {
-        ni_check_shape!(bra.ndim(), 2, "Each bra must be 2D")?;
-        ni_check_shape!(ket.ndim(), 2, "Each ket must be 2D")?;
+        ni_check_shape!(bra.ndim(), 2, "Each bra must be 2-dim")?;
+        ni_check_shape!(ket.ndim(), 2, "Each ket must be 2-dim")?;
         ni_check_shape!(nao, bra.shape()[0], "Bra first dimension must match AO dimension")?;
         ni_check_shape!(nao, ket.shape()[0], "Ket first dimension must match AO dimension")?;
         ni_check_shape!(bra.shape()[1], ket.shape()[1], "Bra and ket occupation must match")?;

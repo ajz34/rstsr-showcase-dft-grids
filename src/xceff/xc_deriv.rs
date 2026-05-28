@@ -78,7 +78,7 @@ pub fn libxc_transform_xcfun_indices(
     deriv: usize,
 ) -> TsrCow<'_> {
     // sanity check
-    assert!(xc0.ndim() == 2, "xc0 must be a 2D tensor");
+    assert!(xc0.ndim() == 2, "xc0 must be a 2-dim tensor");
     let indices = libxc_to_xcfun_mapping(den_type, spin, deriv);
     if let Some(indices) = indices {
         xc0.index_select(-1, &indices).into_cow()
@@ -256,7 +256,7 @@ pub fn unfold_sigma(
     let ngrids = rho.shape()[0];
     // check dimensions
     assert!(xc_val.shape()[0] == ngrids, "xc_val length mismatch");
-    assert!(xc_val.ndim() == 2, "xc_val must be a 2D tensor");
+    assert!(xc_val.ndim() == 2, "xc_val must be a 2-dim tensor");
     match spin {
         Unpolarized => assert!(rho.shape() == &[ngrids, nvar]),
         Polarized => assert!(rho.shape() == &[ngrids, nvar, 2]),
@@ -319,12 +319,12 @@ pub fn transform_xc_inner(
     let xlen = get_xc_xlen(den_type, spin);
     // check dimensions
     ni_check_shape!(xc_val.shape()[0], ngrids, "xc_val length (grids) mismatch")?;
-    ni_check_shape!(xc_val.ndim(), 2, "xc_val must be a 2D tensor")?;
+    ni_check_shape!(xc_val.ndim(), 2, "xc_val must be a 2-dim tensor")?;
     // check shape [ngrids, nvar, nspin if exist], otherwise panic
     match spin {
-        Unpolarized => ni_check_shape!(rho.ndim(), 2, "rho must be a 2D tensor")?,
+        Unpolarized => ni_check_shape!(rho.ndim(), 2, "rho must be a 2-dim tensor")?,
         Polarized => {
-            ni_check_shape!(rho.ndim(), 3, "rho must be a 3D tensor")?;
+            ni_check_shape!(rho.ndim(), 3, "rho must be a 3-dim tensor")?;
             ni_check_shape!(rho.shape()[2], 2, "rho last dimension should be 2 for polarized case")?;
         },
     };
