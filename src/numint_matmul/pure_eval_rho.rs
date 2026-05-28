@@ -11,11 +11,13 @@ use NIDenType::*;
 /// - `dm_list` : density matrices, each of shape `[nao, nao]`; one per set
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
+/// - `ngrids_chunk` : number of grid points to process in one chunk
 pub fn get_rho_from_dm_with_output(
     ao: TsrView,
     dm_list: &[TsrView],
     den_type: NIDenType,
     out: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
@@ -33,14 +35,13 @@ pub fn get_rho_from_dm_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
-    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (nao +
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * nchunk * (nao +
     // nvar) f64
-    const NGRIDS_CHUNK: usize = 384;
-    let scr_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nao]);
-    let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
+    let scr_pool = BufferPool::new(|| vec![0.0; nchunk * nao]);
+    let out_pool = BufferPool::new(|| vec![0.0; nchunk * nvar]);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -50,8 +51,8 @@ pub fn get_rho_from_dm_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
         let chunk_size = end - start;
 
         let dm = &dm_list[iset];
@@ -113,11 +114,13 @@ pub fn get_rho_from_dm_with_output(
 /// - `bra_list` : orbital coefficient matrices, each of shape `[nao, nocc_i]`
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
+/// - `nchunk` : number of grid points to process in one chunk
 pub fn get_rho_from_homogeneous_braket_with_output(
     ao: TsrView,
     bra_list: &[TsrView],
     den_type: NIDenType,
     out: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
@@ -137,15 +140,14 @@ pub fn get_rho_from_homogeneous_braket_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
-    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (2 *
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * nchunk * (2 *
     // nocc_max + nvar) f64
-    const NGRIDS_CHUNK: usize = 384;
-    let scr1_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
-    let scr2_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
-    let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
+    let scr1_pool = BufferPool::new(|| vec![0.0; nchunk * nocc_max]);
+    let scr2_pool = BufferPool::new(|| vec![0.0; nchunk * nocc_max]);
+    let out_pool = BufferPool::new(|| vec![0.0; nchunk * nvar]);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -155,8 +157,8 @@ pub fn get_rho_from_homogeneous_braket_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
         let chunk_size = end - start;
 
         let bra = &bra_list[iset];
@@ -222,12 +224,14 @@ pub fn get_rho_from_homogeneous_braket_with_output(
 /// - `ket_list` : orbital coefficient matrices, each of shape `[nao, nocc]`
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
+/// - `nchunk` : number of grid points to process in one chunk
 pub fn get_rho_from_one_bra_mult_ket_with_output(
     ao: TsrView,
     bra: TsrView,
     ket_list: &[TsrView],
     den_type: NIDenType,
     out: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
@@ -250,16 +254,15 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
-    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (3 *
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * nchunk * (3 *
     // nocc + nvar) f64
-    const NGRIDS_CHUNK: usize = 384;
-    let scr1_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc]);
-    let scr2_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc]);
-    let scr3_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc]);
-    let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
+    let scr1_pool = BufferPool::new(|| vec![0.0; nchunk * nocc]);
+    let scr2_pool = BufferPool::new(|| vec![0.0; nchunk * nocc]);
+    let scr3_pool = BufferPool::new(|| vec![0.0; nchunk * nocc]);
+    let out_pool = BufferPool::new(|| vec![0.0; nchunk * nvar]);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -269,8 +272,8 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
         let chunk_size = end - start;
 
         let ket = &ket_list[iset];
@@ -354,12 +357,14 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
 /// - `ket_list` : orbital coefficient matrices for ket
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
+/// - `nchunk` : number of grid points to process in one chunk
 pub fn get_rho_from_mult_bra_mult_ket_with_output(
     ao: TsrView,
     bra_list: &[TsrView],
     ket_list: &[TsrView],
     den_type: NIDenType,
     out: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3-dim")?;
     let nao = ao.shape()[1];
@@ -383,16 +388,15 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
-    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (3 *
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * nchunk * (3 *
     // nocc_max + nvar) f64
-    const NGRIDS_CHUNK: usize = 384;
-    let scr1_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
-    let scr2_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
-    let scr3_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
-    let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
+    let scr1_pool = BufferPool::new(|| vec![0.0; nchunk * nocc_max]);
+    let scr2_pool = BufferPool::new(|| vec![0.0; nchunk * nocc_max]);
+    let scr3_pool = BufferPool::new(|| vec![0.0; nchunk * nocc_max]);
+    let out_pool = BufferPool::new(|| vec![0.0; nchunk * nvar]);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -402,8 +406,8 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
         let chunk_size = end - start;
 
         let bra = &bra_list[iset];

@@ -212,6 +212,7 @@ mod test_xcpot_pure {
                 ao.view(),
                 h2o.weights.view(),
                 out_opt.view_mut(),
+                ni_obj.nchunk,
             )
             .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
@@ -257,6 +258,7 @@ mod test_xcpot_pure {
                 ao.view(),
                 h2o.weights.view(),
                 out_opt.view_mut(),
+                ni_obj.nchunk,
             )
             .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
@@ -306,6 +308,7 @@ mod test_xcpot_pure {
                 ao.view(),
                 h2o.weights.view(),
                 out_opt.view_mut(),
+                ni_obj.nchunk,
             )
             .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
@@ -356,6 +359,7 @@ mod test_xcpot_pure {
                 h2o.weights.view(),
                 bra.view(),
                 out_opt.view_mut(),
+                ni_obj.nchunk,
             )
             .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();

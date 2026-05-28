@@ -95,12 +95,14 @@ fn contract_ao_wv_without_symmetrize(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao]`
+/// - `nchunk` : number of grid points to process in one chunk
 pub fn rks_vxc_pot_with_eff_with_output(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
     weights: TsrView,
     mut vxc: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(vxc_eff.ndim(), 2, "Effective potential must be 2-dim")?;
     let nvar = vxc_eff.shape()[1];
@@ -122,14 +124,13 @@ pub fn rks_vxc_pot_with_eff_with_output(
 
     // buffer pool initialization
     // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
-    const NGRIDS_CHUNK: usize = 384;
-    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_init = || vec![0.0; nchunk * nao];
     let buffer_pool = BufferPool::new(buffer_init);
     let vxc_init = || vec![0.0; nao * nao];
     let vxc_pool = BufferPool::new(vxc_init);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask = ntask_grid;
 
     // atomic guard to avoid racing write
@@ -140,8 +141,8 @@ pub fn rks_vxc_pot_with_eff_with_output(
         let igrid = itask;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
@@ -187,6 +188,7 @@ pub fn rks_vxc_pot_with_eff_with_output(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `fxc` : output fxc, shape `[nao, nao, nset]`
+/// - `nchunk` : number of grid points to process in one chunk
 pub fn rks_fxc_pot_with_eff_with_output(
     den_type: NIDenType,
     fxc_eff: TsrView,
@@ -194,6 +196,7 @@ pub fn rks_fxc_pot_with_eff_with_output(
     ao: TsrView,
     weights: TsrView,
     mut fxc: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 3, "rho1 tensor must be 3-dim")?;
     let nset = rho1.shape()[2];
@@ -217,14 +220,13 @@ pub fn rks_fxc_pot_with_eff_with_output(
 
     // buffer pool initialization
     // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
-    const NGRIDS_CHUNK: usize = 384;
-    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_init = || vec![0.0; nchunk * nao];
     let buffer_pool = BufferPool::new(buffer_init);
     let fxc_init = || vec![0.0; nao * nao];
     let fxc_pool = BufferPool::new(fxc_init);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -237,8 +239,8 @@ pub fn rks_fxc_pot_with_eff_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
@@ -376,6 +378,7 @@ fn contract_ao_wv_bra(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `bra` : bra orbital coefficients, shape `[nao, nocc]`
 /// - `fxc` : output fxc (bra transformed), shape `[nao, nocc, nset]`
+/// - `nchunk` : number of grid points to process in one chunk
 #[allow(clippy::too_many_arguments)]
 pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
     den_type: NIDenType,
@@ -385,6 +388,7 @@ pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
     weights: TsrView,
     bra: TsrView,
     fxc: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 3, "rho1 tensor must be 3-dim")?;
     let nset = rho1.shape()[2];
@@ -420,14 +424,13 @@ pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
 
     // buffer pool initialization
     // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
-    const NGRIDS_CHUNK: usize = 384;
-    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nocc];
+    let buffer_init = || vec![0.0; nchunk * nocc];
     let buffer_pool = BufferPool::new(buffer_init);
     let fxc_init = || vec![0.0; nao * nocc];
     let fxc_pool = BufferPool::new(fxc_init);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -440,8 +443,8 @@ pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
@@ -489,6 +492,7 @@ pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, nset1, nset2]`
+/// - `nchunk` : number of grid points to process in one chunk
 #[allow(clippy::too_many_arguments)]
 pub fn rks_kxc_pot_with_eff_with_output(
     den_type: NIDenType,
@@ -498,6 +502,7 @@ pub fn rks_kxc_pot_with_eff_with_output(
     ao: TsrView,
     weights: TsrView,
     mut kxc: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 3, "rho1 tensor must be 3-dim")?;
     ni_check_shape!(rho2.ndim(), 3, "rho2 tensor must be 3-dim")?;
@@ -524,14 +529,13 @@ pub fn rks_kxc_pot_with_eff_with_output(
 
     // buffer pool initialization
     // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
-    const NGRIDS_CHUNK: usize = 384;
-    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_init = || vec![0.0; nchunk * nao];
     let buffer_pool = BufferPool::new(buffer_init);
     let kxc_init = || vec![0.0; nao * nao];
     let kxc_pool = BufferPool::new(kxc_init);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = nset1 * nset2;
     let ntask = ntask_grid * ntask_i;
 
@@ -546,8 +550,8 @@ pub fn rks_kxc_pot_with_eff_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
@@ -602,12 +606,14 @@ pub fn rks_kxc_pot_with_eff_with_output(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao, 2]`
+/// - `nchunk` : number of grid points to process in one chunk
 pub fn uks_vxc_pot_with_eff_with_output(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
     weights: TsrView,
     mut vxc: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(vxc_eff.ndim(), 3, "Effective potential must be 3-dim")?;
     let nvar = vxc_eff.shape()[1];
@@ -630,14 +636,13 @@ pub fn uks_vxc_pot_with_eff_with_output(
 
     // buffer pool initialization
     // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
-    const NGRIDS_CHUNK: usize = 384;
-    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_init = || vec![0.0; nchunk * nao];
     let buffer_pool = BufferPool::new(buffer_init);
     let vxc_init = || vec![0.0; nao * nao];
     let vxc_pool = BufferPool::new(vxc_init);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = 2;
     let ntask = ntask_grid * ntask_i;
 
@@ -650,8 +655,8 @@ pub fn uks_vxc_pot_with_eff_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
@@ -700,6 +705,7 @@ pub fn uks_vxc_pot_with_eff_with_output(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `fxc` : output fxc, shape `[nao, nao, 2, nset]`
+/// - `nchunk` : number of grid points to process in one chunk
 pub fn uks_fxc_pot_with_eff_with_output(
     den_type: NIDenType,
     fxc_eff: TsrView,
@@ -707,6 +713,7 @@ pub fn uks_fxc_pot_with_eff_with_output(
     ao: TsrView,
     weights: TsrView,
     mut fxc: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 4, "rho1 tensor must be 4-dim")?;
     let nset = rho1.shape()[3];
@@ -731,14 +738,13 @@ pub fn uks_fxc_pot_with_eff_with_output(
 
     // buffer pool initialization
     // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
-    const NGRIDS_CHUNK: usize = 384;
-    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_init = || vec![0.0; nchunk * nao];
     let buffer_pool = BufferPool::new(buffer_init);
     let fxc_init = || vec![0.0; nao * nao];
     let fxc_pool = BufferPool::new(fxc_init);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = 2 * nset;
     let ntask = ntask_grid * ntask_i;
 
@@ -753,8 +759,8 @@ pub fn uks_fxc_pot_with_eff_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();
@@ -809,6 +815,7 @@ pub fn uks_fxc_pot_with_eff_with_output(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, 2, nset1, nset2]`
+/// - `nchunk` : number of grid points to process in one chunk
 #[allow(clippy::too_many_arguments)]
 pub fn uks_kxc_pot_with_eff_with_output(
     den_type: NIDenType,
@@ -818,6 +825,7 @@ pub fn uks_kxc_pot_with_eff_with_output(
     ao: TsrView,
     weights: TsrView,
     mut kxc: TsrMut,
+    nchunk: usize,
 ) -> Result<(), NIError> {
     ni_check_shape!(rho1.ndim(), 4, "rho1 tensor must be 4-dim")?;
     ni_check_shape!(rho2.ndim(), 4, "rho2 tensor must be 4-dim")?;
@@ -845,14 +853,13 @@ pub fn uks_kxc_pot_with_eff_with_output(
 
     // buffer pool initialization
     // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
-    const NGRIDS_CHUNK: usize = 384;
-    let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
+    let buffer_init = || vec![0.0; nchunk * nao];
     let buffer_pool = BufferPool::new(buffer_init);
     let kxc_init = || vec![0.0; nao * nao];
     let kxc_pool = BufferPool::new(kxc_init);
 
     // task numbers
-    let ntask_grid = ngrids.div_ceil(NGRIDS_CHUNK);
+    let ntask_grid = ngrids.div_ceil(nchunk);
     let ntask_i = 2 * nset1 * nset2;
     let ntask = ntask_grid * ntask_i;
 
@@ -868,8 +875,8 @@ pub fn uks_kxc_pot_with_eff_with_output(
         let igrid = itask / ntask_i;
 
         // determine the grid chunk for this task
-        let start = igrid * NGRIDS_CHUNK;
-        let end = ((igrid + 1) * NGRIDS_CHUNK).min(ngrids);
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
 
         // get buffer from pool
         let mut buf = buffer_pool.get();

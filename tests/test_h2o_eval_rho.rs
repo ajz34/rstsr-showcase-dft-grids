@@ -90,7 +90,7 @@ mod test_eval_rho_pure {
             let mut out_naive = create_out(h2o, den_type);
             let mut out_opt = create_out(h2o, den_type);
             get_rho_from_dm_with_output_naive(ao.view(), &dm_list, den_type, out_naive.view_mut()).unwrap();
-            get_rho_from_dm_with_output(ao.view(), &dm_list, den_type, out_opt.view_mut()).unwrap();
+            get_rho_from_dm_with_output(ao.view(), &dm_list, den_type, out_opt.view_mut(), ni_obj.nchunk).unwrap();
             assert_match(&out_naive, &out_opt, "get_rho_from_dm", den_type);
         }
     }
@@ -106,7 +106,7 @@ mod test_eval_rho_pure {
             let mut out_opt = create_out(h2o, den_type);
             get_rho_from_homogeneous_braket_with_output_naive(ao.view(), &bra_views, den_type, out_naive.view_mut())
                 .unwrap();
-            get_rho_from_homogeneous_braket_with_output(ao.view(), &bra_views, den_type, out_opt.view_mut()).unwrap();
+            get_rho_from_homogeneous_braket_with_output(ao.view(), &bra_views, den_type, out_opt.view_mut(), ni_obj.nchunk).unwrap();
             assert_match(&out_naive, &out_opt, "get_rho_from_homogeneous_braket", den_type);
         }
     }

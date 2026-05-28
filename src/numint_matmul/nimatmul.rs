@@ -8,14 +8,47 @@ pub struct NIMatmul<'a> {
     pub cint: CInt,
     pub coords: Vec<[f64; 3]>,
     pub weights: Vec<f64>,
+
+    /// Cache for computed AO values, keyed by derivative order (e.g., "deriv0", "deriv1", etc.).
+    ///
+    /// This cache is not designed to be modified by API caller in usual cases.
     pub cache_tensor: HashMap<String, TsrCow<'a, f64>>,
+
+    /// Number of grid points to process in one chunk.
+    ///
+    /// Relations of size: full-grid > batch > chunk > per-grid = 1.
+    ///
+    /// This value is better set to KC of micro-kernel (256-512 for usual x86 server).
+    /// Default to be 384.
+    pub nchunk: usize,
+
+    /// Number of grid points to process in one batch.
+    ///
+    /// Relations of size: full-grid > batch > chunk > per-grid = 1.
+    ///
+    /// Full grid requires `[ngrids, nao, ncomp]` AO tensor, which can be too large to fit in memory
+    /// for big systems. That's why we need to split the grid into batches.
+    ///
+    /// This value is better set to a proper size, not exceeding available memory, and be multiple
+    /// of `nchunk` for better performance.
+    /// Default to be 384 * 4 * nthreads. nthreads is determined at runtime by rayon.
+    pub nbatch: usize,
 }
 
 impl<'a> NIMatmul<'a> {
     /// Creates a new instance with the given integral engine, grid coordinates, and weights.
     pub fn new(cint: &CInt, coords: &[[f64; 3]], weights: &[f64]) -> Self {
         assert!(coords.len() == weights.len(), "Number of coordinates must match number of weights");
-        Self { cint: cint.clone(), coords: coords.to_vec(), weights: weights.to_vec(), cache_tensor: HashMap::new() }
+        let nchunk = 384;
+        let nbatch = nchunk * 4 * rayon::current_num_threads();
+        Self {
+            cint: cint.clone(),
+            coords: coords.to_vec(),
+            weights: weights.to_vec(),
+            cache_tensor: HashMap::new(),
+            nchunk,
+            nbatch,
+        }
     }
 
     /// Evaluates AO integrals for the given derivative order and returns as a tensor.
@@ -66,6 +99,7 @@ impl<'a> NIMatmul<'a> {
     ///
     /// Density tensor of shape `[ngrids, nvar, nset]`.
     pub fn make_rho_from_dm(&mut self, dm_list: &[TsrView], den_type: NIDenType) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
         let ngrids = ao.shape()[0];
@@ -79,7 +113,7 @@ impl<'a> NIMatmul<'a> {
         let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        get_rho_from_dm_with_output(ao, dm_list, den_type, out.view_mut())?;
+        get_rho_from_dm_with_output(ao, dm_list, den_type, out.view_mut(), nchunk)?;
         Ok(out)
     }
 
@@ -98,6 +132,7 @@ impl<'a> NIMatmul<'a> {
         bra_list: &[TsrView],
         den_type: NIDenType,
     ) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
         let ngrids = ao.shape()[0];
@@ -110,7 +145,7 @@ impl<'a> NIMatmul<'a> {
         let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out.view_mut())?;
+        get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out.view_mut(), nchunk)?;
         Ok(out)
     }
 
@@ -131,6 +166,7 @@ impl<'a> NIMatmul<'a> {
         ket_list: &[TsrView],
         den_type: NIDenType,
     ) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
         let ngrids = ao.shape()[0];
@@ -148,7 +184,7 @@ impl<'a> NIMatmul<'a> {
         let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out.view_mut())?;
+        get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out.view_mut(), nchunk)?;
         Ok(out)
     }
 
@@ -169,6 +205,7 @@ impl<'a> NIMatmul<'a> {
         ket_list: &[TsrView],
         den_type: NIDenType,
     ) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
         let ngrids = ao.shape()[0];
@@ -185,7 +222,7 @@ impl<'a> NIMatmul<'a> {
         let out_shape = [ngrids, den_type.num_nvar(), nset];
         let device = ao.device().clone();
         let mut out = rt::zeros((out_shape.f(), &device));
-        get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out.view_mut())?;
+        get_rho_from_mult_bra_mult_ket_with_output(ao, bra_list, ket_list, den_type, out.view_mut(), nchunk)?;
         Ok(out)
     }
 
@@ -207,6 +244,7 @@ impl<'a> NIMatmul<'a> {
         den_type: NIDenType,
         spin: usize,
     ) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
         let nao = ao.shape()[1];
@@ -215,11 +253,11 @@ impl<'a> NIMatmul<'a> {
 
         if spin == 0 {
             let mut out = rt::zeros(([nao, nao], &device));
-            rks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut())?;
+            rks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
             Ok(out)
         } else {
             let mut out = rt::zeros(([nao, nao, 2], &device));
-            uks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut())?;
+            uks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
             Ok(out)
         }
     }
@@ -245,6 +283,7 @@ impl<'a> NIMatmul<'a> {
         den_type: NIDenType,
         spin: usize,
     ) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
         let nao = ao.shape()[1];
@@ -254,12 +293,12 @@ impl<'a> NIMatmul<'a> {
         if spin == 0 {
             let nset = rho1.shape()[2];
             let mut out = rt::zeros(([nao, nao, nset], &device));
-            rks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut())?;
+            rks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
             Ok(out)
         } else {
             let nset = rho1.shape()[3];
             let mut out = rt::zeros(([nao, nao, 2, nset], &device));
-            uks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut())?;
+            uks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
             Ok(out)
         }
     }
@@ -287,6 +326,7 @@ impl<'a> NIMatmul<'a> {
         den_type: NIDenType,
         spin: usize,
     ) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
         let nao = ao.shape()[1];
@@ -305,6 +345,7 @@ impl<'a> NIMatmul<'a> {
                 weights_tsr.view(),
                 bra,
                 out.view_mut(),
+                nchunk,
             )?;
             Ok(out)
         } else {
@@ -337,6 +378,7 @@ impl<'a> NIMatmul<'a> {
         den_type: NIDenType,
         spin: usize,
     ) -> Result<Tsr, NIError> {
+        let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
         let nao = ao.shape()[1];
@@ -347,13 +389,13 @@ impl<'a> NIMatmul<'a> {
             let nset1 = rho1.shape()[2];
             let nset2 = rho2.shape()[2];
             let mut out = rt::zeros(([nao, nao, nset1, nset2], &device));
-            rks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut())?;
+            rks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
             Ok(out)
         } else {
             let nset1 = rho1.shape()[3];
             let nset2 = rho2.shape()[3];
             let mut out = rt::zeros(([nao, nao, 2, nset1, nset2], &device));
-            uks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut())?;
+            uks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
             Ok(out)
         }
     }
