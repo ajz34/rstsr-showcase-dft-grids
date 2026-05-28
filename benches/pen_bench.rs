@@ -1,3 +1,24 @@
+//! Benchmarks for DFT numerical integral for pentacene (C22H14), def2-TZVP.
+//!
+//! To perform this benchmark, you need to first run `pen-bench.ipynb` to generate the `pen.npz`
+//! file containing the molecular data and reference results. Then you can run `cargo bench`.
+//!
+//! ## Efficiency benchmark result
+//!
+//! Tested on AMD Ryzen 9 9955HX (16 cores).
+//!
+//! Functional: HYB_MGGA_XC_TPSSH (meta-GGA, tau-only)
+//!
+//! | Framework      | Property | Time (s) |
+//! | -------------- | -------- | -------- |
+//! | PySCF, NumInt  | vxc      |  6.94    |
+//! |                | fxc      | 29.3     |
+//! | Rust, NIMatmul | vxc      |  5.762   |
+//! |                | fxc      | 21.308   |
+//!
+//! Please also note PySCF is shipped by PyPI, not the fully optimized compiled version. So actually
+//! PySCF may be faster than the above numbers, but the relative performance should be similar.
+
 mod util;
 
 use itertools::Itertools;
