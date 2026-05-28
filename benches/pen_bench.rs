@@ -18,6 +18,10 @@
 //!
 //! Please also note PySCF is shipped by PyPI, not the fully optimized compiled version. So actually
 //! PySCF may be faster than the above numbers, but the relative performance should be similar.
+//!
+//! Also note that this implementation is merely simple BLAS. Efficiency is not the primary goal
+//! here, but it seems to be still usable. AO sparsity and other optimizations should be possible to
+//! further improve the performance.
 
 mod util;
 
