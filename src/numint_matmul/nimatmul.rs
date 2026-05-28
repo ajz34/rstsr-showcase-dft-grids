@@ -4,6 +4,7 @@ use super::prelude::*;
 ///
 /// Holds molecular coordinates, grid weights, and caches AO integral evaluations
 /// to avoid recomputation across multiple density/XCPot evaluations.
+#[derive(Clone, Debug)]
 pub struct NIMatmul<'a> {
     pub cint: CInt,
     pub coords: Vec<[f64; 3]>,
@@ -48,6 +49,18 @@ impl<'a> NIMatmul<'a> {
             cache_tensor: HashMap::new(),
             nchunk,
             nbatch,
+        }
+    }
+
+    /// Clone everything, except the cached tensors.
+    pub fn duplicate(&self) -> Self {
+        Self {
+            cint: self.cint.clone(),
+            coords: self.coords.clone(),
+            weights: self.weights.clone(),
+            cache_tensor: HashMap::new(),
+            nchunk: self.nchunk,
+            nbatch: self.nbatch,
         }
     }
 
@@ -389,13 +402,31 @@ impl<'a> NIMatmul<'a> {
             let nset1 = rho1.shape()[2];
             let nset2 = rho2.shape()[2];
             let mut out = rt::zeros(([nao, nao, nset1, nset2], &device));
-            rks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
+            rks_kxc_pot_with_eff_with_output(
+                den_type,
+                kxc_eff,
+                rho1,
+                rho2,
+                ao,
+                weights_tsr.view(),
+                out.view_mut(),
+                nchunk,
+            )?;
             Ok(out)
         } else {
             let nset1 = rho1.shape()[3];
             let nset2 = rho2.shape()[3];
             let mut out = rt::zeros(([nao, nao, 2, nset1, nset2], &device));
-            uks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
+            uks_kxc_pot_with_eff_with_output(
+                den_type,
+                kxc_eff,
+                rho1,
+                rho2,
+                ao,
+                weights_tsr.view(),
+                out.view_mut(),
+                nchunk,
+            )?;
             Ok(out)
         }
     }

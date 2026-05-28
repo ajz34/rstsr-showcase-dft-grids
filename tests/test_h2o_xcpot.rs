@@ -54,14 +54,10 @@ fn perturbed_dm(h2o: &H2OMolecule) -> H2OPerturbedDM {
 mod test_xcpot {
     use super::*;
 
-    fn dm0_view(h2o: &H2OMolecule) -> TsrView<'_> {
-        h2o.rdm1.view()
-    }
-
     #[rstest]
     fn test_rho(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
         let mut ni_obj = h2o.build_ni_obj();
-        let rho0 = ni_obj.make_rho_from_dm(&[dm0_view(h2o)], RHO).unwrap().into_squeeze(-1);
+        let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], RHO).unwrap().into_squeeze(-1);
         let dm1_list = perturbed_dm.dm1_flat.axes_iter(-1).collect_vec();
         let dm2_list = perturbed_dm.dm2_flat.axes_iter(-1).collect_vec();
         let rho1 = ni_obj.make_rho_from_dm(&dm1_list, RHO).unwrap();
@@ -83,7 +79,7 @@ mod test_xcpot {
     #[rstest]
     fn test_sigma(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
         let mut ni_obj = h2o.build_ni_obj();
-        let rho0 = ni_obj.make_rho_from_dm(&[dm0_view(h2o)], SIGMA).unwrap().into_squeeze(-1);
+        let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], SIGMA).unwrap().into_squeeze(-1);
         let dm1_list = perturbed_dm.dm1_flat.axes_iter(-1).collect_vec();
         let dm2_list = perturbed_dm.dm2_flat.axes_iter(-1).collect_vec();
         let rho1 = ni_obj.make_rho_from_dm(&dm1_list, SIGMA).unwrap();
@@ -105,7 +101,7 @@ mod test_xcpot {
     #[rstest]
     fn test_tau(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
         let mut ni_obj = h2o.build_ni_obj();
-        let rho0 = ni_obj.make_rho_from_dm(&[dm0_view(h2o)], TAU).unwrap().into_squeeze(-1);
+        let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], TAU).unwrap().into_squeeze(-1);
         let dm1_list = perturbed_dm.dm1_flat.axes_iter(-1).collect_vec();
         let dm2_list = perturbed_dm.dm2_flat.axes_iter(-1).collect_vec();
         let rho1 = ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap();
@@ -127,7 +123,7 @@ mod test_xcpot {
     #[rstest]
     fn test_tau_bra_trans(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
         let mut ni_obj = h2o.build_ni_obj();
-        let rho0 = ni_obj.make_rho_from_dm(&[dm0_view(h2o)], TAU).unwrap().into_squeeze(-1);
+        let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], TAU).unwrap().into_squeeze(-1);
         let dm1_list = perturbed_dm.dm1_flat.axes_iter(-1).collect_vec();
         let rho1 = ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap();
 
@@ -155,6 +151,25 @@ mod test_xcpot {
         let fxc_bra_trans =
             ni_obj.make_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU, 0).unwrap();
         fp_assert_eq!(fxc_bra_trans.view(), 0.11104650048770713, 1e-6);
+    }
+}
+
+mod test_xcpot_from_dm_naive {
+    use rstsr_showcase_dft_grids::xcpot_dm_naive::make_rks_xcpot_from_dm_naive;
+
+    use super::*;
+
+    #[rstest]
+    fn test_rho(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
+        let ni_obj = h2o.build_ni_obj();
+        let dm0 = h2o.rdm1.view();
+        let xc_func = LibXCFunctional::from_identifier("LDA_X", Unpolarized);
+        let (nelec, exc, vxc) = make_rks_xcpot_from_dm_naive(&ni_obj, &xc_func, dm0).unwrap();
+        assert!((nelec - 10.0).abs() < 1e-5);
+        assert!((exc - -8.1384975323).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -27.2331156537, 1e-6);
+        // fp_assert_eq!(fxc.view(), -0.09693300035135462, 1e-6);
+        // fp_assert_eq!(kxc.view(), 0.3789165091826895, 1e-6);
     }
 }
 

@@ -5,6 +5,7 @@ pub mod error;
 pub mod flags;
 pub mod numint_matmul;
 pub mod xceff;
+pub mod xcpot_dm_naive;
 
 pub mod prelude {
     #![allow(unused)]
