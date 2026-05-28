@@ -1,7 +1,9 @@
 import unittest
-from pyscf import gto, dft, lib
-from pynimatmul.nimatmul import NIMatmul
+
 import numpy as np
+from pyscf import gto, dft, lib
+
+from pynimatmul.nimatmul import NIMatmul
 
 
 def setUpModule():

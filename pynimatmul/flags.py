@@ -1,4 +1,16 @@
 def num_nvar(den_type: str) -> int:
+    """Number of density variables for a given density type.
+
+    Parameters
+    ----------
+    den_type : str
+        The density type. One of "RHO", "SIGMA", "TAU", "LAPL".
+
+    Returns
+    -------
+    int
+        The number of density variables.
+    """
     mapping = {
         "RHO": 1,
         "SIGMA": 4,
@@ -11,6 +23,18 @@ def num_nvar(den_type: str) -> int:
 
 
 def num_ao_comp(den_type: str) -> int:
+    """Number of AO components for a given density type.
+
+    Parameters
+    ----------
+    den_type : str
+        The density type. One of "RHO", "SIGMA", "TAU", "LAPL".
+
+    Returns
+    -------
+    int
+        The number of AO components.
+    """
     mapping = {
         "RHO": 1,
         "SIGMA": 4,
@@ -23,6 +47,18 @@ def num_ao_comp(den_type: str) -> int:
 
 
 def num_ao_deriv(den_type: str) -> int:
+    """AO derivative order for a given density type.
+
+    Parameters
+    ----------
+    den_type : str
+        The density type. One of "RHO", "SIGMA", "TAU", "LAPL".
+
+    Returns
+    -------
+    int
+        The AO derivative order.
+    """
     mapping = {
         "RHO": 0,
         "SIGMA": 1,

@@ -7,7 +7,6 @@ def get_rho_from_dm_with_output(
     dm_list: list[np.ndarray],
     den_type: str,
     out: np.ndarray,
-    buf: np.ndarray,
 ):
     """Evaluate density from density matrices.
 
@@ -16,15 +15,13 @@ def get_rho_from_dm_with_output(
     Parameters
     ----------
     ao : np.ndarray
-        The AO values with shape [ncomp, nao, ngrid].
+        The AO values with shape [ncomp, nao, ngrids].
     dm_list : list[np.ndarray]
         The list of density matrices, each with shape [nao, nao].
     den_type : str
         The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
     out : np.ndarray
-        The output array to store the computed density, with shape [nset, nvar, ngrid].
-    buf : np.ndarray
-        The buffer array to store intermediate results, with size ngrids * nao.
+        The output array to store the computed density, with shape [nset, nvar, ngrids].
     """
     assert ao.ndim == 3
     nao = ao.shape[1]
@@ -37,7 +34,6 @@ def get_rho_from_dm_with_output(
     ngrids = ao.shape[2]
     nvar = num_nvar(den_type)
     assert out.shape == (nset, nvar, ngrids)
-    assert buf.size >= ngrids * nao
     assert ao.shape[0] >= num_ao_comp(den_type)
 
     for i, dm in enumerate(dm_list):
@@ -67,22 +63,19 @@ def get_rho_from_homogeneous_braket_with_output(
     bra_list: list[np.ndarray],
     den_type: str,
     out: np.ndarray,
-    buf: np.ndarray,
 ):
     """Evaluate density from orbital coefficients where bra and ket are the same.
 
     Parameters
     ----------
     ao : np.ndarray
-        The AO values with shape [ncomp, nao, ngrid].
+        The AO values with shape [ncomp, nao, ngrids].
     bra_list : list[np.ndarray]
         Orbital coefficient matrices, each with shape [nao, nocc]; one per set.
     den_type : str
         The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
     out : np.ndarray
-        The output array, with shape [nset, nvar, ngrid].
-    buf : np.ndarray
-        The buffer array, with size at least 2 * ngrid * nocc_max.
+        The output array, with shape [nset, nvar, ngrids].
     """
     assert ao.ndim == 3
     nao = ao.shape[1]
@@ -91,13 +84,11 @@ def get_rho_from_homogeneous_braket_with_output(
         assert bra.ndim == 2
         assert bra.shape[0] == nao
 
-    nocc_max = max(bra.shape[1] for bra in bra_list) if bra_list else 0
     nset = len(bra_list)
-    ngrid = ao.shape[2]
+    ngrids = ao.shape[2]
     nvar = num_nvar(den_type)
 
-    assert out.shape == (nset, nvar, ngrid)
-    assert buf.size >= 2 * ngrid * nocc_max
+    assert out.shape == (nset, nvar, ngrids)
     assert ao.shape[0] >= num_ao_comp(den_type)
 
     for i, bra in enumerate(bra_list):
@@ -128,14 +119,13 @@ def get_rho_from_one_bra_mult_ket_with_output(
     ket_list: list[np.ndarray],
     den_type: str,
     out: np.ndarray,
-    buf: np.ndarray,
 ):
     """Evaluate density from one shared bra and multiple kets.
 
     Parameters
     ----------
     ao : np.ndarray
-        The AO values with shape [ncomp, nao, ngrid].
+        The AO values with shape [ncomp, nao, ngrids].
     bra : np.ndarray
         Shared orbital coefficient matrix with shape [nao, nocc].
     ket_list : list[np.ndarray]
@@ -143,9 +133,7 @@ def get_rho_from_one_bra_mult_ket_with_output(
     den_type : str
         The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
     out : np.ndarray
-        The output array, with shape [nset, nvar, ngrid].
-    buf : np.ndarray
-        The buffer array, with size at least 3 * ngrid * nocc.
+        The output array, with shape [nset, nvar, ngrids].
     """
     assert ao.ndim == 3
     nao = ao.shape[1]
@@ -160,11 +148,10 @@ def get_rho_from_one_bra_mult_ket_with_output(
         assert ket.shape[1] == nocc
 
     nset = len(ket_list)
-    ngrid = ao.shape[2]
+    ngrids = ao.shape[2]
     nvar = num_nvar(den_type)
 
-    assert out.shape == (nset, nvar, ngrid)
-    assert buf.size >= 3 * ngrid * nocc
+    assert out.shape == (nset, nvar, ngrids)
     assert ao.shape[0] >= num_ao_comp(den_type)
 
     # Pre-compute scr1 = bra.T @ ao[0] (shared across all sets)
@@ -211,14 +198,13 @@ def get_rho_from_mult_bra_mult_ket_with_output(
     ket_list: list[np.ndarray],
     den_type: str,
     out: np.ndarray,
-    buf: np.ndarray,
 ):
     """Evaluate density from multiple bra-ket pairs.
 
     Parameters
     ----------
     ao : np.ndarray
-        The AO values with shape [ncomp, nao, ngrid].
+        The AO values with shape [ncomp, nao, ngrids].
     bra_list : list[np.ndarray]
         Orbital coefficient matrices for bra, each with shape [nao, nocc_i].
     ket_list : list[np.ndarray]
@@ -226,15 +212,12 @@ def get_rho_from_mult_bra_mult_ket_with_output(
     den_type : str
         The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
     out : np.ndarray
-        The output array, with shape [nset, nvar, ngrid].
-    buf : np.ndarray
-        The buffer array, with size at least 3 * ngrid * nocc_max.
+        The output array, with shape [nset, nvar, ngrids].
     """
     assert ao.ndim == 3
     nao = ao.shape[1]
 
     assert len(bra_list) == len(ket_list)
-    nocc_max = max(bra.shape[1] for bra in bra_list) if bra_list else 0
 
     for bra, ket in zip(bra_list, ket_list):
         assert bra.ndim == 2
@@ -244,11 +227,10 @@ def get_rho_from_mult_bra_mult_ket_with_output(
         assert bra.shape[1] == ket.shape[1]
 
     nset = len(bra_list)
-    ngrid = ao.shape[2]
+    ngrids = ao.shape[2]
     nvar = num_nvar(den_type)
 
-    assert out.shape == (nset, nvar, ngrid)
-    assert buf.size >= 3 * ngrid * nocc_max
+    assert out.shape == (nset, nvar, ngrids)
     assert ao.shape[0] >= num_ao_comp(den_type)
 
     for i, (bra, ket) in enumerate(zip(bra_list, ket_list)):

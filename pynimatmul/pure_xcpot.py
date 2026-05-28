@@ -61,6 +61,11 @@ def rks_vxc_pot_with_eff(
         The basis functions, shape [ncomp, nao, ngrids].
     weights : np.ndarray
         The integration weights, shape [ngrids].
+
+    Returns
+    -------
+    vxc : np.ndarray
+        The XC potential, shape [nao, nao].
     """
     nvar, ngrids = vxc_eff.shape
     assert weights.shape == (ngrids,)
@@ -349,7 +354,7 @@ def contract_ao_wv_bra(
     Returns
     -------
     contracted : np.ndarray
-        The contracted AO, shape [nao, nao].
+        The contracted AO, shape [nocc, nao].
     """
     nvar, ngrids = wv.shape
     assert num_nvar(den_type) == nvar
@@ -391,7 +396,7 @@ def rks_fxc_pot_with_eff_bra_trans(
 ):
     r"""Evaluate XC potential (2nd order) with fxc_eff, with bra transformed.
 
-    Bra usually be occupied orbital coefficient (row-major applied to $\mu$), which can lower the computational cost.
+    Bra is usually the occupied orbital coefficient (row-major applied to $\mu$), which can lower the computational cost.
 
     Parameters
     ----------

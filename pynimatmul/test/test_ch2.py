@@ -1,8 +1,10 @@
 import unittest
+
+import numpy as np
 from pyscf import gto, dft, lib
+
 from pynimatmul.flags import num_nvar
 from pynimatmul.nimatmul import NIMatmul
-import numpy as np
 
 
 def setUpModule():
@@ -223,6 +225,7 @@ class TestXCPot(unittest.TestCase):
         cls.dm2 = 0.5 * (dm2 + dm2.swapaxes(-1, -2))
 
     def test_rho(self):
+        # setup
         nao = mo_coeff.shape[1]
         nvar = num_nvar("RHO")
         ngrids = coords.shape[0]
@@ -259,6 +262,7 @@ class TestXCPot(unittest.TestCase):
         self.assertAlmostEqual(lib.fp(kxc), 0.40388776601225995, places=6)
 
     def test_sigma(self):
+        # setup
         nao = mo_coeff.shape[1]
         nvar = num_nvar("SIGMA")
         ngrids = coords.shape[0]
@@ -299,6 +303,7 @@ class TestXCPot(unittest.TestCase):
         self.assertAlmostEqual(lib.fp(kxc), 0.2770362015666589, places=6)
 
     def test_tau(self):
+        # setup
         nao = mo_coeff.shape[1]
         nvar = num_nvar("TAU")
         ngrids = coords.shape[0]
@@ -319,22 +324,23 @@ class TestXCPot(unittest.TestCase):
         self.assertAlmostEqual(lib.fp(fxc), 31.692895267010428, places=6)
         # test of current implementation
         # exc
-        exc_check = (exc_eff * (rho0[0, 0] + rho0[1, 0]) * weights).sum()
-        self.assertAlmostEqual(exc_check, -4.9638946892, places=6)
+        exc = (exc_eff * (rho0[0, 0] + rho0[1, 0]) * weights).sum()
+        self.assertAlmostEqual(exc, -4.9638946892, places=6)
         # vxc
-        vxc_impl = ni_obj.get_vxc_pot_with_eff(vxc_eff, "TAU", spin=1)
-        self.assertEqual(vxc_impl.shape, (2, nao, nao))
-        self.assertAlmostEqual(lib.fp(vxc_impl), -12.384391087, places=6)
+        vxc = ni_obj.get_vxc_pot_with_eff(vxc_eff, "TAU", spin=1)
+        self.assertEqual(vxc.shape, (2, nao, nao))
+        self.assertAlmostEqual(lib.fp(vxc), -12.384391087, places=6)
         # fxc
-        fxc_impl = ni_obj.get_fxc_pot_with_eff(fxc_eff, rho1, "TAU", spin=1)
-        self.assertEqual(fxc_impl.shape, (3, 2, nao, nao))
-        self.assertAlmostEqual(lib.fp(fxc_impl), 31.692895267010428, places=6)
+        fxc = ni_obj.get_fxc_pot_with_eff(fxc_eff, rho1, "TAU", spin=1)
+        self.assertEqual(fxc.shape, (3, 2, nao, nao))
+        self.assertAlmostEqual(lib.fp(fxc), 31.692895267010428, places=6)
         # kxc
-        kxc_impl = ni_obj.get_kxc_pot_with_eff(kxc_eff, rho1, rho2, "TAU", spin=1)
-        self.assertEqual(kxc_impl.shape, (9, 3, 2, nao, nao))
-        self.assertAlmostEqual(lib.fp(kxc_impl), 6528.81912736829, places=6)
+        kxc = ni_obj.get_kxc_pot_with_eff(kxc_eff, rho1, rho2, "TAU", spin=1)
+        self.assertEqual(kxc.shape, (9, 3, 2, nao, nao))
+        self.assertAlmostEqual(lib.fp(kxc), 6528.81912736829, places=6)
 
     def test_tau_bra_trans(self):
+        # setup
         nao = mo_coeff.shape[1]
         nvar = num_nvar("TAU")
         ngrids = coords.shape[0]
@@ -344,15 +350,15 @@ class TestXCPot(unittest.TestCase):
         _, _, fxc_eff, _ = ni.eval_xc_eff("HYB_MGGA_XC_TPSSH", rho0, deriv=2, spin=1)
         occ_coeff = [mo_coeff[s][:, mo_occ[s] > 0] for s in range(2)]
         # test of pyscf reference values
-        fxc_ref = ni.nr_uks_fxc(
+        fxc = ni.nr_uks_fxc(
             mol, grids, "HYB_MGGA_XC_TPSSH", self.dm0, self.dm1.swapaxes(0, 1)
         ).swapaxes(0, 1)
-        fxc_bra_trans = [occ_coeff[s].T @ fxc_ref[:, s] for s in range(2)]
+        fxc_bra_trans = [occ_coeff[s].T @ fxc[:, s] for s in range(2)]
         self.assertAlmostEqual(lib.fp(fxc_bra_trans[0]), 0.07646866826480496, places=6)
         self.assertAlmostEqual(lib.fp(fxc_bra_trans[1]), 0.01717215515438316, places=6)
         # test of current implementation
-        fxc_impl = ni_obj.get_fxc_pot_with_eff_bra_trans(
+        fxc_bra_trans = ni_obj.get_fxc_pot_with_eff_bra_trans(
             fxc_eff, rho1, occ_coeff, "TAU", spin=1
         )
-        self.assertAlmostEqual(lib.fp(fxc_impl[0]), 0.07646866826480496, places=6)
-        self.assertAlmostEqual(lib.fp(fxc_impl[1]), 0.01717215515438316, places=6)
+        self.assertAlmostEqual(lib.fp(fxc_bra_trans[0]), 0.07646866826480496, places=6)
+        self.assertAlmostEqual(lib.fp(fxc_bra_trans[1]), 0.01717215515438316, places=6)

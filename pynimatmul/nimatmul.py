@@ -4,8 +4,8 @@ NumInt proposal for REST, reference implementation in Python.
 This implementation uses naive BLAS-3 and not optimized.
 """
 
-from pyscf import gto, dft
 import numpy as np
+from pyscf import gto
 from pynimatmul.flags import num_ao_deriv, num_nvar
 from pynimatmul.pure_eval_rho import (
     get_rho_from_dm_with_output,
@@ -69,6 +69,18 @@ class NIMatmul:
         return grids.transpose(0, 2, 1)
 
     def get_cached_ao(self, deriv: int):
+        """Get AO values with caching.
+
+        Parameters
+        ----------
+        deriv : int
+            The order of derivatives. 0 for AO values, 1 for gradients, 2 for hessians.
+
+        Returns
+        -------
+        ao : np.ndarray
+            The AO values with shape [ncomp, nao, ngrids].
+        """
         AO_DERIV_DIM = [1, 4, 10, 20, 35]
         assert deriv < len(AO_DERIV_DIM)
         # determine maximum cached derivative level
@@ -85,6 +97,20 @@ class NIMatmul:
         return self.cache_tensor[filter_str]
 
     def get_rho_from_dm(self, dm_list: list[np.ndarray], den_type: str) -> np.ndarray:
+        """Evaluate density from density matrices.
+
+        Parameters
+        ----------
+        dm_list : list[np.ndarray]
+            The list of density matrices, each with shape [nao, nao].
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+
+        Returns
+        -------
+        out : np.ndarray
+            The computed density, shape [nset, nvar, ngrids].
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
 
         ngrids = ao.shape[2]
@@ -96,35 +122,60 @@ class NIMatmul:
 
         out_shape = (nset, num_nvar(den_type), ngrids)
         out = np.zeros(out_shape)
-        buf = np.empty(ngrids * nao)
-        return get_rho_from_dm_with_output(ao, dm_list, den_type, out, buf)
+        return get_rho_from_dm_with_output(ao, dm_list, den_type, out)
 
     def get_rho_from_homogeneous_braket(
         self, bra_list: list[np.ndarray], den_type: str
     ) -> np.ndarray:
+        """Evaluate density from orbital coefficients where bra and ket are the same.
+
+        Parameters
+        ----------
+        bra_list : list[np.ndarray]
+            Orbital coefficient matrices, each with shape [nao, nocc].
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+
+        Returns
+        -------
+        out : np.ndarray
+            The computed density, shape [nset, nvar, ngrids].
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
 
-        ngrid = ao.shape[2]
+        ngrids = ao.shape[2]
         nao = ao.shape[1]
         for bra in bra_list:
             assert bra.ndim == 2
             assert bra.shape[0] == nao
-        nocc_max = max(bra.shape[1] for bra in bra_list) if bra_list else 0
         nset = len(bra_list)
 
-        out_shape = (nset, num_nvar(den_type), ngrid)
+        out_shape = (nset, num_nvar(den_type), ngrids)
         out = np.zeros(out_shape)
-        buf = np.empty(2 * ngrid * nocc_max)
-        return get_rho_from_homogeneous_braket_with_output(
-            ao, bra_list, den_type, out, buf
-        )
+        return get_rho_from_homogeneous_braket_with_output(ao, bra_list, den_type, out)
 
     def get_rho_from_one_bra_mult_ket(
         self, bra: np.ndarray, ket_list: list[np.ndarray], den_type: str
     ) -> np.ndarray:
+        """Evaluate density from one shared bra and multiple kets.
+
+        Parameters
+        ----------
+        bra : np.ndarray
+            Shared orbital coefficient matrix with shape [nao, nocc].
+        ket_list : list[np.ndarray]
+            Orbital coefficient matrices, each with shape [nao, nocc].
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+
+        Returns
+        -------
+        out : np.ndarray
+            The computed density, shape [nset, nvar, ngrids].
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
 
-        ngrid = ao.shape[2]
+        ngrids = ao.shape[2]
         nao = ao.shape[1]
         assert bra.ndim == 2
         assert bra.shape[0] == nao
@@ -135,19 +186,32 @@ class NIMatmul:
             assert ket.shape[1] == nocc
         nset = len(ket_list)
 
-        out_shape = (nset, num_nvar(den_type), ngrid)
+        out_shape = (nset, num_nvar(den_type), ngrids)
         out = np.zeros(out_shape)
-        buf = np.empty(3 * ngrid * nocc)
-        return get_rho_from_one_bra_mult_ket_with_output(
-            ao, bra, ket_list, den_type, out, buf
-        )
+        return get_rho_from_one_bra_mult_ket_with_output(ao, bra, ket_list, den_type, out)
 
     def get_rho_from_mult_bra_mult_ket(
         self, bra_list: list[np.ndarray], ket_list: list[np.ndarray], den_type: str
     ) -> np.ndarray:
+        """Evaluate density from multiple bra-ket pairs.
+
+        Parameters
+        ----------
+        bra_list : list[np.ndarray]
+            Orbital coefficient matrices for bra, each with shape [nao, nocc_i].
+        ket_list : list[np.ndarray]
+            Orbital coefficient matrices for ket, each with shape [nao, nocc_i].
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+
+        Returns
+        -------
+        out : np.ndarray
+            The computed density, shape [nset, nvar, ngrids].
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
 
-        ngrid = ao.shape[2]
+        ngrids = ao.shape[2]
         nao = ao.shape[1]
         for bra, ket in zip(bra_list, ket_list):
             assert bra.ndim == 2
@@ -155,19 +219,33 @@ class NIMatmul:
             assert bra.shape[0] == nao
             assert ket.shape[0] == nao
             assert bra.shape[1] == ket.shape[1]
-        nocc_max = max(bra.shape[1] for bra in bra_list) if bra_list else 0
         nset = len(bra_list)
 
-        out_shape = (nset, num_nvar(den_type), ngrid)
+        out_shape = (nset, num_nvar(den_type), ngrids)
         out = np.zeros(out_shape)
-        buf = np.empty(3 * ngrid * nocc_max)
         return get_rho_from_mult_bra_mult_ket_with_output(
-            ao, bra_list, ket_list, den_type, out, buf
+            ao, bra_list, ket_list, den_type, out
         )
 
     def get_vxc_pot_with_eff(
         self, vxc_eff: np.ndarray, den_type: str, spin: int
     ) -> np.ndarray:
+        """Evaluate XC potential (1st order) with vxc_eff.
+
+        Parameters
+        ----------
+        vxc_eff : np.ndarray
+            The effective XC potential, shape [nvar, ngrids] for RKS, [2, nvar, ngrids] for UKS.
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+        spin : int
+            0 for RKS, 1 for UKS.
+
+        Returns
+        -------
+        vxc : np.ndarray
+            The XC potential, shape [nao, nao] for RKS, [2, nao, nao] for UKS.
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
         f = rks_vxc_pot_with_eff if spin == 0 else uks_vxc_pot_with_eff
         return f(den_type, vxc_eff, ao, self.weights)
@@ -175,6 +253,24 @@ class NIMatmul:
     def get_fxc_pot_with_eff(
         self, fxc_eff: np.ndarray, rho1: np.ndarray, den_type: str, spin: int
     ) -> np.ndarray:
+        """Evaluate XC potential (2nd order) with fxc_eff.
+
+        Parameters
+        ----------
+        fxc_eff : np.ndarray
+            The effective XC kernel, shape [nvar, nvar, ngrids] for RKS, [2, nvar, 2, nvar, ngrids] for UKS.
+        rho1 : np.ndarray
+            The first-order density response, shape [nset, nvar, ngrids] for RKS, [nset, 2, nvar, ngrids] for UKS.
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+        spin : int
+            0 for RKS, 1 for UKS.
+
+        Returns
+        -------
+        fxc : np.ndarray
+            The second-order XC potential, shape [nset, nao, nao] for RKS, [nset, 2, nao, nao] for UKS.
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
         f = rks_fxc_pot_with_eff if spin == 0 else uks_fxc_pot_with_eff
         return f(den_type, fxc_eff, rho1, ao, self.weights)
@@ -187,6 +283,30 @@ class NIMatmul:
         den_type: str,
         spin: int,
     ) -> np.ndarray:
+        """Evaluate XC potential (3rd order) with kxc_eff.
+
+        Parameters
+        ----------
+        kxc_eff : np.ndarray
+            The effective XC kernel, shape [nvar, nvar, nvar, ngrids] for RKS,
+            [2, nvar, 2, nvar, 2, nvar, ngrids] for UKS.
+        rho1 : np.ndarray
+            The first-order density response, shape [nset1, nvar, ngrids] for RKS,
+            [nset1, 2, nvar, ngrids] for UKS.
+        rho2 : np.ndarray
+            The second-order density response, shape [nset2, nvar, ngrids] for RKS,
+            [nset2, 2, nvar, ngrids] for UKS.
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+        spin : int
+            0 for RKS, 1 for UKS.
+
+        Returns
+        -------
+        kxc : np.ndarray
+            The third-order XC potential, shape [nset2, nset1, nao, nao] for RKS,
+            [nset2, nset1, 2, nao, nao] for UKS.
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
         f = rks_kxc_pot_with_eff if spin == 0 else uks_kxc_pot_with_eff
         return f(den_type, kxc_eff, rho1, rho2, ao, self.weights)
@@ -199,6 +319,31 @@ class NIMatmul:
         den_type: str,
         spin: int,
     ):
+        """Evaluate XC potential (2nd order) with fxc_eff, with bra transformed.
+
+        Parameters
+        ----------
+        fxc_eff : np.ndarray
+            The effective XC kernel, shape [nvar, nvar, ngrids] for RKS,
+            [2, nvar, 2, nvar, ngrids] for UKS.
+        rho1 : np.ndarray
+            The first-order density response, shape [nset, nvar, ngrids] for RKS,
+            [nset, 2, nvar, ngrids] for UKS.
+        bra : np.ndarray or list[np.ndarray]
+            The bra orbital coefficients. For RKS: shape [nao, nocc].
+            For UKS: list of two arrays [nao, nocc_alpha] and [nao, nocc_beta].
+        den_type : str
+            The type of density to compute. Can be "RHO", "SIGMA", "TAU", or "LAPL".
+        spin : int
+            0 for RKS, 1 for UKS.
+
+        Returns
+        -------
+        fxc : np.ndarray or list[np.ndarray]
+            The second-order XC potential (bra transformed).
+            For RKS: shape [nset, nocc, nao].
+            For UKS: list of two arrays [nset, nocc_alpha, nao] and [nset, nocc_beta, nao].
+        """
         ao = self.get_cached_ao(num_ao_deriv(den_type))
         f = (
             rks_fxc_pot_with_eff_bra_trans
