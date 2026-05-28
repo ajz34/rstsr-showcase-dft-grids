@@ -67,7 +67,7 @@ pub fn get_rho_from_dm_with_output_naive(
 /// Evaluate density from orbital coefficients ("bra" vectors), where bra and ket are same, without
 /// forming the density matrix.
 ///
-/// # Arguments
+/// # Parameters
 ///
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `bra_list` : orbital coefficient matrices, each of shape `[nao, nocc]`; one per set, the
@@ -129,7 +129,7 @@ pub fn get_rho_from_homogeneous_braket_with_output_naive(
 /// Evaluate density from orbital coefficients with one shared bra and multiple kets,
 /// without forming the density matrix.
 ///
-/// # Arguments
+/// # Parameters
 ///
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `bra` : shared orbital coefficient matrix, shape `[nao, nocc]`
@@ -212,7 +212,7 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_naive(
 
 /// Evaluate density from multiple bra-ket pairs, without forming the density matrix.
 ///
-/// # Arguments
+/// # Parameters
 ///
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `bra_list` : orbital coefficient matrices for bra, each of shape `[nao, nocc_i]`; the

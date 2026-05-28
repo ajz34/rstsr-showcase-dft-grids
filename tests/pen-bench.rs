@@ -84,9 +84,9 @@ basis = "def2-TZVP""#;
         &self.cint_mol.cint
     }
 
-    pub fn build_ni_obj(&self) -> NIMatMul<'_> {
+    pub fn build_ni_obj(&self) -> NIMatmul<'_> {
         let coords_array = self.coords.to_owned().into_pack_array::<3>(0).into_vec();
-        NIMatMul::new(self.cint(), &coords_array, &self.weights.to_vec())
+        NIMatmul::new(self.cint(), &coords_array, &self.weights.to_vec())
     }
 
     pub fn bra_list(&self) -> [Tsr; 1] {
@@ -156,7 +156,7 @@ fn batched_vxc(pen: &PenMolecule) {
         let stop = (start + GRID_BATCH).min(pen.ngrids);
         let coords = &coords[start..stop];
         let weights = &weights[start..stop];
-        let mut ni_obj = NIMatMul::new(pen.cint(), coords, weights);
+        let mut ni_obj = NIMatmul::new(pen.cint(), coords, weights);
 
         // generate rho
         let weights = rt::asarray((weights, &device));
@@ -207,7 +207,7 @@ fn batched_fxc(pen: &PenMolecule, perturbed_dm: &PenPerturbedDM) {
         let stop = (start + GRID_BATCH).min(pen.ngrids);
         let coords = &coords[start..stop];
         let weights = &weights[start..stop];
-        let mut ni_obj = NIMatMul::new(pen.cint(), coords, weights);
+        let mut ni_obj = NIMatmul::new(pen.cint(), coords, weights);
 
         // generate rho
         let rho0 = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], TAU).unwrap();

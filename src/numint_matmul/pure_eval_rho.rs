@@ -33,6 +33,7 @@ pub fn get_rho_from_dm_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (nao + nvar) f64
     const NGRIDS_CHUNK: usize = 384;
     let scr_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nao]);
     let out_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nvar]);
@@ -135,6 +136,7 @@ pub fn get_rho_from_homogeneous_braket_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (2 * nocc_max + nvar) f64
     const NGRIDS_CHUNK: usize = 384;
     let scr1_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
     let scr2_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
@@ -246,6 +248,7 @@ pub fn get_rho_from_one_bra_mult_ket_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (3 * nocc + nvar) f64
     const NGRIDS_CHUNK: usize = 384;
     let scr1_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc]);
     let scr2_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc]);
@@ -377,6 +380,7 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output(
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * NGRIDS_CHUNK * (3 * nocc_max + nvar) f64
     const NGRIDS_CHUNK: usize = 384;
     let scr1_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);
     let scr2_pool = BufferPool::new(|| vec![0.0; NGRIDS_CHUNK * nocc_max]);

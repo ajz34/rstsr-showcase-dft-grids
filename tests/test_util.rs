@@ -64,9 +64,9 @@ basis = "def2-TZVP""#;
         &self.cint_mol.cint
     }
 
-    pub fn build_ni_obj(&self) -> NIMatMul<'_> {
+    pub fn build_ni_obj(&self) -> NIMatmul<'_> {
         let coords_array = self.coords.to_owned().into_pack_array::<3>(0).into_vec();
-        NIMatMul::new(self.cint(), &coords_array, &self.weights.to_vec())
+        NIMatmul::new(self.cint(), &coords_array, &self.weights.to_vec())
     }
 
     pub fn bra_list(&self) -> [Tsr; 2] {
@@ -115,9 +115,9 @@ basis = "def2-TZVP""#;
         &self.cint_mol.cint
     }
 
-    pub fn build_ni_obj(&self) -> NIMatMul<'_> {
+    pub fn build_ni_obj(&self) -> NIMatmul<'_> {
         let coords_array = self.coords.to_owned().into_pack_array::<3>(0).into_vec();
-        NIMatMul::new(self.cint(), &coords_array, &self.weights.to_vec())
+        NIMatmul::new(self.cint(), &coords_array, &self.weights.to_vec())
     }
 
     pub fn bra_list(&self) -> [Tsr; 1] {

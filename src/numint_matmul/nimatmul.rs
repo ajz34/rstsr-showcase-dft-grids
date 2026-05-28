@@ -1,18 +1,26 @@
 use super::prelude::*;
 
-pub struct NIMatMul<'a> {
+/// Numerical integration driver using matrix-multiplication.
+///
+/// Holds molecular coordinates, grid weights, and caches AO integral evaluations
+/// to avoid recomputation across multiple density/XCPot evaluations.
+pub struct NIMatmul<'a> {
     pub cint: CInt,
     pub coords: Vec<[f64; 3]>,
     pub weights: Vec<f64>,
     pub cache_tensor: HashMap<String, TsrCow<'a, f64>>,
 }
 
-impl<'a> NIMatMul<'a> {
+impl<'a> NIMatmul<'a> {
+    /// Creates a new instance with the given integral engine, grid coordinates, and weights.
     pub fn new(cint: &CInt, coords: &[[f64; 3]], weights: &[f64]) -> Self {
         assert!(coords.len() == weights.len(), "Number of coordinates must match number of weights");
         Self { cint: cint.clone(), coords: coords.to_vec(), weights: weights.to_vec(), cache_tensor: HashMap::new() }
     }
 
+    /// Evaluates AO integrals for the given derivative order and returns as a tensor.
+    ///
+    /// The returned tensor has shape `[ngrids, nao, ncomp]` where `ncomp = AO_DERIV_DIM[deriv]`.
     pub fn prepare_ao(&self, deriv: usize) -> Tsr {
         let eval_name = format!("deriv{}", deriv);
         let (out, shape) = self.cint.eval_gto(&eval_name, &self.coords).into();
@@ -20,6 +28,10 @@ impl<'a> NIMatMul<'a> {
         rt::asarray((out, shape, &device))
     }
 
+    /// Returns cached AO values for the given derivative order, computing and caching if needed.
+    ///
+    /// When a higher derivative order has already been cached, the required subset is returned
+    /// directly without recomputation.
     pub fn get_cached_ao(&mut self, deriv: usize) -> TsrView<'_> {
         assert!(
             deriv < AO_DERIV_DIM.len(),
@@ -43,6 +55,16 @@ impl<'a> NIMatMul<'a> {
         self.cache_tensor.get(&key).unwrap().view()
     }
 
+    /// Evaluates density from density matrices.
+    ///
+    /// # Parameters
+    ///
+    /// - `dm_list` : density matrices, each of shape `[nao, nao]`; one per set
+    /// - `den_type` : which density components to compute
+    ///
+    /// # Returns
+    ///
+    /// Density tensor of shape `[ngrids, nvar, nset]`.
     pub fn make_rho_from_dm(&mut self, dm_list: &[TsrView], den_type: NIDenType) -> Result<Tsr, NIError> {
         let ao = self.get_cached_ao(den_type.num_ao_deriv());
 
@@ -61,6 +83,16 @@ impl<'a> NIMatMul<'a> {
         Ok(out)
     }
 
+    /// Evaluates density from orbital coefficients where bra and ket are the same.
+    ///
+    /// # Parameters
+    ///
+    /// - `bra_list` : orbital coefficient matrices, each of shape `[nao, nocc_i]`
+    /// - `den_type` : which density components to compute
+    ///
+    /// # Returns
+    ///
+    /// Density tensor of shape `[ngrids, nvar, nset]`.
     pub fn make_rho_from_homogeneous_braket(
         &mut self,
         bra_list: &[TsrView],
@@ -82,6 +114,17 @@ impl<'a> NIMatMul<'a> {
         Ok(out)
     }
 
+    /// Evaluates density from one shared bra and multiple kets.
+    ///
+    /// # Parameters
+    ///
+    /// - `bra` : shared orbital coefficient matrix, shape `[nao, nocc]`
+    /// - `ket_list` : orbital coefficient matrices, each of shape `[nao, nocc]`
+    /// - `den_type` : which density components to compute
+    ///
+    /// # Returns
+    ///
+    /// Density tensor of shape `[ngrids, nvar, nset]`.
     pub fn make_rho_from_one_bra_mult_ket(
         &mut self,
         bra: TsrView,
@@ -109,6 +152,17 @@ impl<'a> NIMatMul<'a> {
         Ok(out)
     }
 
+    /// Evaluates density from multiple bra-ket pairs.
+    ///
+    /// # Parameters
+    ///
+    /// - `bra_list` : orbital coefficient matrices for bra, each of shape `[nao, nocc_i]`
+    /// - `ket_list` : orbital coefficient matrices for ket, each of shape `[nao, nocc_i]`
+    /// - `den_type` : which density components to compute
+    ///
+    /// # Returns
+    ///
+    /// Density tensor of shape `[ngrids, nvar, nset]`.
     pub fn make_rho_from_mult_bra_mult_ket(
         &mut self,
         bra_list: &[TsrView],
@@ -135,6 +189,17 @@ impl<'a> NIMatMul<'a> {
         Ok(out)
     }
 
+    /// Evaluates XC potential (1st order) with vxc_eff.
+    ///
+    /// # Parameters
+    ///
+    /// - `vxc_eff` : effective XC potential, shape `[ngrids, nvar]` for RKS, `[ngrids, nvar, 2]` for UKS
+    /// - `den_type` : which density components to compute
+    /// - `spin` : 0 for RKS, 1 for UKS
+    ///
+    /// # Returns
+    ///
+    /// XC potential, shape `[nao, nao]` for RKS, `[nao, nao, 2]` for UKS.
     pub fn make_vxc_pot_with_eff(
         &mut self,
         vxc_eff: TsrView,
@@ -149,15 +214,29 @@ impl<'a> NIMatMul<'a> {
 
         if spin == 0 {
             let mut out = rt::zeros(([nao, nao], &device));
-            rks_vxc_pot_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut())?;
+            rks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         } else {
             let mut out = rt::zeros(([nao, nao, 2], &device));
-            uks_vxc_pot_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut())?;
+            uks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         }
     }
 
+    /// Evaluates XC potential (2nd order) with fxc_eff.
+    ///
+    /// # Parameters
+    ///
+    /// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar]` for RKS,
+    ///   `[ngrids, nvar, 2, nvar, 2]` for UKS
+    /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]` for RKS,
+    ///   `[ngrids, nvar, 2, nset]` for UKS
+    /// - `den_type` : which density components to compute
+    /// - `spin` : 0 for RKS, 1 for UKS
+    ///
+    /// # Returns
+    ///
+    /// Second-order XC potential, shape `[nao, nao, nset]` for RKS, `[nao, nao, 2, nset]` for UKS.
     pub fn make_fxc_pot_with_eff(
         &mut self,
         fxc_eff: TsrView,
@@ -174,16 +253,31 @@ impl<'a> NIMatMul<'a> {
         if spin == 0 {
             let nset = rho1.shape()[2];
             let mut out = rt::zeros(([nao, nao, nset], &device));
-            rks_fxc_pot_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut())?;
+            rks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         } else {
             let nset = rho1.shape()[3];
             let mut out = rt::zeros(([nao, nao, 2, nset], &device));
-            uks_fxc_pot_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut())?;
+            uks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         }
     }
 
+    /// Evaluates XC potential (2nd order) with fxc_eff, applying bra transformation.
+    ///
+    /// Bra is usually the occupied orbital coefficient, which can lower the computational cost.
+    ///
+    /// # Parameters
+    ///
+    /// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar]`
+    /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]`
+    /// - `bra` : bra orbital coefficients, shape `[nao, nocc]`
+    /// - `den_type` : which density components to compute
+    /// - `spin` : 0 for RKS (UKS not yet implemented)
+    ///
+    /// # Returns
+    ///
+    /// Bra-transformed XC potential, shape `[nao, nocc, nset]`.
     pub fn make_fxc_pot_with_eff_bra_trans(
         &mut self,
         fxc_eff: TsrView,
@@ -211,6 +305,23 @@ impl<'a> NIMatMul<'a> {
         }
     }
 
+    /// Evaluates XC potential (3rd order) with kxc_eff.
+    ///
+    /// # Parameters
+    ///
+    /// - `kxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar, nvar]` for RKS,
+    ///   `[ngrids, nvar, 2, nvar, 2, nvar, 2]` for UKS
+    /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset1]` for RKS,
+    ///   `[ngrids, nvar, 2, nset1]` for UKS
+    /// - `rho2` : second-order density response, shape `[ngrids, nvar, nset2]` for RKS,
+    ///   `[ngrids, nvar, 2, nset2]` for UKS
+    /// - `den_type` : which density components to compute
+    /// - `spin` : 0 for RKS, 1 for UKS
+    ///
+    /// # Returns
+    ///
+    /// Third-order XC potential, shape `[nao, nao, nset1, nset2]` for RKS,
+    /// `[nao, nao, 2, nset1, nset2]` for UKS.
     pub fn make_kxc_pot_with_eff(
         &mut self,
         kxc_eff: TsrView,
@@ -229,13 +340,13 @@ impl<'a> NIMatMul<'a> {
             let nset1 = rho1.shape()[2];
             let nset2 = rho2.shape()[2];
             let mut out = rt::zeros(([nao, nao, nset1, nset2], &device));
-            rks_kxc_pot_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut())?;
+            rks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         } else {
             let nset1 = rho1.shape()[3];
             let nset2 = rho2.shape()[3];
             let mut out = rt::zeros(([nao, nao, 2, nset1, nset2], &device));
-            uks_kxc_pot_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut())?;
+            uks_kxc_pot_with_eff_with_output(den_type, kxc_eff, rho1, rho2, ao, weights_tsr.view(), out.view_mut())?;
             Ok(out)
         }
     }

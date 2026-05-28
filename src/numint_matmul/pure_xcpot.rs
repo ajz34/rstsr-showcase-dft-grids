@@ -95,7 +95,7 @@ fn contract_ao_wv_without_symmetrize(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao]`
-pub fn rks_vxc_pot_with_output(
+pub fn rks_vxc_pot_with_eff_with_output(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -121,6 +121,7 @@ pub fn rks_vxc_pot_with_output(
     let vxc_contracted = weights * vxc_eff;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
@@ -176,7 +177,17 @@ pub fn rks_vxc_pot_with_output(
     Ok(())
 }
 
-pub fn rks_fxc_pot_with_output(
+/// Evaluate XC potential (2nd order, RKS) with fxc_eff (parallel enhanced).
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar]`
+/// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `weights` : grid weights, shape `[ngrids]`
+/// - `fxc` : output fxc, shape `[nao, nao, nset]`
+pub fn rks_fxc_pot_with_eff_with_output(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -205,6 +216,7 @@ pub fn rks_fxc_pot_with_output(
     let fxc_eff_weighted = &weights * &fxc_eff;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
@@ -407,6 +419,7 @@ pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
     let fxc_eff_weighted = &weights * &fxc_eff;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nocc];
     let buffer_pool = BufferPool::new(buffer_init);
@@ -477,7 +490,7 @@ pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, nset1, nset2]`
 #[allow(clippy::too_many_arguments)]
-pub fn rks_kxc_pot_with_output(
+pub fn rks_kxc_pot_with_eff_with_output(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,
@@ -510,6 +523,7 @@ pub fn rks_kxc_pot_with_output(
     let kxc_eff_weighted = &weights * &kxc_eff;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
@@ -588,7 +602,7 @@ pub fn rks_kxc_pot_with_output(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao, 2]`
-pub fn uks_vxc_pot_with_output(
+pub fn uks_vxc_pot_with_eff_with_output(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -615,6 +629,7 @@ pub fn uks_vxc_pot_with_output(
     let vxc_eff_weighted = &weights * &vxc_eff;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
@@ -685,7 +700,7 @@ pub fn uks_vxc_pot_with_output(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `fxc` : output fxc, shape `[nao, nao, 2, nset]`
-pub fn uks_fxc_pot_with_output(
+pub fn uks_fxc_pot_with_eff_with_output(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -715,6 +730,7 @@ pub fn uks_fxc_pot_with_output(
     let fxc_eff_weighted = &weights * &fxc_eff;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);
@@ -794,7 +810,7 @@ pub fn uks_fxc_pot_with_output(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, 2, nset1, nset2]`
 #[allow(clippy::too_many_arguments)]
-pub fn uks_kxc_pot_with_output(
+pub fn uks_kxc_pot_with_eff_with_output(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,
@@ -828,6 +844,7 @@ pub fn uks_kxc_pot_with_output(
     let kxc_eff_weighted = &weights * &kxc_eff;
 
     // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
     const NGRIDS_CHUNK: usize = 384;
     let buffer_init = || vec![0.0; NGRIDS_CHUNK * nao];
     let buffer_pool = BufferPool::new(buffer_init);

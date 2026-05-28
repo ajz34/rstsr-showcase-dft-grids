@@ -65,7 +65,7 @@ fn contract_ao_wv_naive(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao]`; must be zeroed before calling
-pub fn rks_vxc_pot_with_output_naive(
+pub fn rks_vxc_pot_with_eff_with_output_naive(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -91,7 +91,17 @@ pub fn rks_vxc_pot_with_output_naive(
     contract_ao_wv_naive(den_type, vxc_contracted.view(), ao, vxc)
 }
 
-pub fn rks_fxc_pot_with_output_naive(
+/// Evaluate XC potential (2nd order, RKS) with fxc_eff.
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar]`
+/// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `weights` : grid weights, shape `[ngrids]`
+/// - `fxc` : output fxc, shape `[nao, nao, nset]`; must be zeroed before calling
+pub fn rks_fxc_pot_with_eff_with_output_naive(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -136,7 +146,7 @@ pub fn rks_fxc_pot_with_output_naive(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, nset1, nset2]`; must be zeroed before calling
 #[allow(clippy::too_many_arguments)]
-pub fn rks_kxc_pot_with_output_naive(
+pub fn rks_kxc_pot_with_eff_with_output_naive(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,
@@ -189,7 +199,7 @@ pub fn rks_kxc_pot_with_output_naive(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `vxc` : output vxc, shape `[nao, nao, 2]`; must be zeroed before calling
-pub fn uks_vxc_pot_with_output_naive(
+pub fn uks_vxc_pot_with_eff_with_output_naive(
     den_type: NIDenType,
     vxc_eff: TsrView,
     ao: TsrView,
@@ -229,7 +239,7 @@ pub fn uks_vxc_pot_with_output_naive(
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `fxc` : output fxc, shape `[nao, nao, 2, nset]`; must be zeroed before calling
-pub fn uks_fxc_pot_with_output_naive(
+pub fn uks_fxc_pot_with_eff_with_output_naive(
     den_type: NIDenType,
     fxc_eff: TsrView,
     rho1: TsrView,
@@ -278,7 +288,7 @@ pub fn uks_fxc_pot_with_output_naive(
 /// - `weights` : grid weights, shape `[ngrids]`
 /// - `kxc` : output kxc, shape `[nao, nao, 2, nset1, nset2]`; must be zeroed before calling
 #[allow(clippy::too_many_arguments)]
-pub fn uks_kxc_pot_with_output_naive(
+pub fn uks_kxc_pot_with_eff_with_output_naive(
     den_type: NIDenType,
     kxc_eff: TsrView,
     rho1: TsrView,

@@ -77,25 +77,25 @@ class TestGetRhoOrig(unittest.TestCase):
 class TestGetRhoFromDM(unittest.TestCase):
     def test_rho(self):
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_dm(list(rdm1), "RHO")
+        out = ni_obj.make_rho_from_dm(list(rdm1), "RHO")
         self.assertEqual(out.shape, (2, 1, ngrids))
         self.assertAlmostEqual(lib.fp(out), 90.16002674074024, places=6)
 
     def test_sigma(self):
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_dm(list(rdm1), "SIGMA")
+        out = ni_obj.make_rho_from_dm(list(rdm1), "SIGMA")
         self.assertEqual(out.shape, (2, 4, ngrids))
         self.assertAlmostEqual(lib.fp(out), 369.81784285463505, places=6)
 
     def test_tau(self):
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_dm(list(rdm1), "TAU")
+        out = ni_obj.make_rho_from_dm(list(rdm1), "TAU")
         self.assertEqual(out.shape, (2, 5, ngrids))
         self.assertAlmostEqual(lib.fp(out), 5587.859016487354, places=6)
 
     def test_lapl(self):
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_dm(list(rdm1), "LAPL")
+        out = ni_obj.make_rho_from_dm(list(rdm1), "LAPL")
         self.assertEqual(out.shape, (2, 6, ngrids))
         self.assertAlmostEqual(lib.fp(out[:, :5, :]), 5587.859016487354, places=6)
         self.assertAlmostEqual(lib.fp(out[:, 5, :]), -783527.5368333743, places=4)
@@ -112,32 +112,32 @@ class TestGetRhoFromHomogeneousBraket(unittest.TestCase):
     def test_rho(self):
         bra_list = self._get_bra_list()
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "RHO")
-        ref = ni_obj.get_rho_from_dm(list(rdm1), "RHO")
+        out = ni_obj.make_rho_from_homogeneous_braket(bra_list, "RHO")
+        ref = ni_obj.make_rho_from_dm(list(rdm1), "RHO")
         self.assertEqual(out.shape, (2, 1, ngrids))
         self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=8)
 
     def test_sigma(self):
         bra_list = self._get_bra_list()
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "SIGMA")
-        ref = ni_obj.get_rho_from_dm(list(rdm1), "SIGMA")
+        out = ni_obj.make_rho_from_homogeneous_braket(bra_list, "SIGMA")
+        ref = ni_obj.make_rho_from_dm(list(rdm1), "SIGMA")
         self.assertEqual(out.shape, (2, 4, ngrids))
         self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=8)
 
     def test_tau(self):
         bra_list = self._get_bra_list()
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "TAU")
-        ref = ni_obj.get_rho_from_dm(list(rdm1), "TAU")
+        out = ni_obj.make_rho_from_homogeneous_braket(bra_list, "TAU")
+        ref = ni_obj.make_rho_from_dm(list(rdm1), "TAU")
         self.assertEqual(out.shape, (2, 5, ngrids))
         self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=8)
 
     def test_lapl(self):
         bra_list = self._get_bra_list()
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_homogeneous_braket(bra_list, "LAPL")
-        ref = ni_obj.get_rho_from_dm(list(rdm1), "LAPL")
+        out = ni_obj.make_rho_from_homogeneous_braket(bra_list, "LAPL")
+        ref = ni_obj.make_rho_from_dm(list(rdm1), "LAPL")
         self.assertEqual(out.shape, (2, 6, ngrids))
         self.assertAlmostEqual(np.abs(out - ref).max(), 0, places=6)
 
@@ -152,7 +152,7 @@ class TestGetRhoFromOneBraMultKet(unittest.TestCase):
     def test_rho(self):
         bra, ket_list = self._get_bra_ket()
         ni_obj = NIMatmul(mol, coords, weights)
-        out = ni_obj.get_rho_from_one_bra_mult_ket(bra, ket_list, "RHO")
+        out = ni_obj.make_rho_from_one_bra_mult_ket(bra, ket_list, "RHO")
         self.assertEqual(out.shape, (2, 1, ngrids))
 
     def test_cross_check(self):
@@ -164,9 +164,9 @@ class TestGetRhoFromOneBraMultKet(unittest.TestCase):
         dm_b_sym = (dm_b + dm_b.T) * 0.5
         ni_obj = NIMatmul(mol, coords, weights)
         for den_type in ["RHO", "SIGMA", "TAU", "LAPL"]:
-            out = ni_obj.get_rho_from_one_bra_mult_ket(bra, ket_list, den_type)
-            ref_a = ni_obj.get_rho_from_dm([dm_a_sym], den_type)
-            ref_b = ni_obj.get_rho_from_dm([dm_b_sym], den_type)
+            out = ni_obj.make_rho_from_one_bra_mult_ket(bra, ket_list, den_type)
+            ref_a = ni_obj.make_rho_from_dm([dm_a_sym], den_type)
+            ref_b = ni_obj.make_rho_from_dm([dm_b_sym], den_type)
             diff_a = np.abs(out[0] - ref_a[0]).max()
             diff_b = np.abs(out[1] - ref_b[0]).max()
             self.assertLess(
@@ -195,13 +195,13 @@ class TestGetRhoFromMultBraMultKet(unittest.TestCase):
         dm_b_sym = (dm_b + dm_b.T) * 0.5
         ni_obj = NIMatmul(mol, coords, weights)
         for den_type in ["RHO", "SIGMA", "TAU", "LAPL"]:
-            out = ni_obj.get_rho_from_mult_bra_mult_ket(bra_list, ket_list, den_type)
+            out = ni_obj.make_rho_from_mult_bra_mult_ket(bra_list, ket_list, den_type)
             self.assertEqual(
                 out.shape,
                 (2, {"RHO": 1, "SIGMA": 4, "TAU": 5, "LAPL": 6}[den_type], ngrids),
             )
-            ref_a = ni_obj.get_rho_from_dm([dm_a_sym], den_type)
-            ref_b = ni_obj.get_rho_from_dm([dm_b_sym], den_type)
+            ref_a = ni_obj.make_rho_from_dm([dm_a_sym], den_type)
+            ref_b = ni_obj.make_rho_from_dm([dm_b_sym], den_type)
             diff_a = np.abs(out[0] - ref_a[0]).max()
             diff_b = np.abs(out[1] - ref_b[0]).max()
             self.assertLess(
@@ -230,9 +230,9 @@ class TestXCPot(unittest.TestCase):
         nvar = num_nvar("RHO")
         ngrids = coords.shape[0]
         shape_i, shape_o = [-1, nao, nao], [-1, 2, nvar, ngrids]
-        rho0 = ni_obj.get_rho_from_dm(self.dm0, "RHO")
-        rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "RHO").reshape(shape_o)
-        rho2 = ni_obj.get_rho_from_dm(self.dm2.reshape(shape_i), "RHO").reshape(shape_o)
+        rho0 = ni_obj.make_rho_from_dm(self.dm0, "RHO")
+        rho1 = ni_obj.make_rho_from_dm(self.dm1.reshape(shape_i), "RHO").reshape(shape_o)
+        rho2 = ni_obj.make_rho_from_dm(self.dm2.reshape(shape_i), "RHO").reshape(shape_o)
         exc_eff, vxc_eff, fxc_eff, kxc_eff = ni.eval_xc_eff(
             "LDA_X", rho0, deriv=3, spin=1
         )
@@ -249,15 +249,15 @@ class TestXCPot(unittest.TestCase):
         exc = (exc_eff * (rho0[0] + rho0[1]) * weights).sum()
         self.assertAlmostEqual(exc, -4.7040426008, places=6)
         # vxc
-        vxc = ni_obj.get_vxc_pot_with_eff(vxc_eff, "RHO", spin=1)
+        vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff, "RHO", spin=1)
         self.assertEqual(vxc.shape, (2, nao, nao))
         self.assertAlmostEqual(lib.fp(vxc), -12.7427734694, places=6)
         # fxc
-        fxc = ni_obj.get_fxc_pot_with_eff(fxc_eff, rho1, "RHO", spin=1)
+        fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff, rho1, "RHO", spin=1)
         self.assertEqual(fxc.shape, (3, 2, nao, nao))
         self.assertAlmostEqual(lib.fp(fxc), -0.2560478462754152, places=6)
         # kxc
-        kxc = ni_obj.get_kxc_pot_with_eff(kxc_eff, rho1, rho2, "RHO", spin=1)
+        kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff, rho1, rho2, "RHO", spin=1)
         self.assertEqual(kxc.shape, (9, 3, 2, nao, nao))
         self.assertAlmostEqual(lib.fp(kxc), 0.40388776601225995, places=6)
 
@@ -267,11 +267,11 @@ class TestXCPot(unittest.TestCase):
         nvar = num_nvar("SIGMA")
         ngrids = coords.shape[0]
         shape_i, shape_o = [-1, nao, nao], [-1, 2, nvar, ngrids]
-        rho0 = ni_obj.get_rho_from_dm(self.dm0, "SIGMA")
-        rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "SIGMA").reshape(
+        rho0 = ni_obj.make_rho_from_dm(self.dm0, "SIGMA")
+        rho1 = ni_obj.make_rho_from_dm(self.dm1.reshape(shape_i), "SIGMA").reshape(
             shape_o
         )
-        rho2 = ni_obj.get_rho_from_dm(self.dm2.reshape(shape_i), "SIGMA").reshape(
+        rho2 = ni_obj.make_rho_from_dm(self.dm2.reshape(shape_i), "SIGMA").reshape(
             shape_o
         )
         exc_eff, vxc_eff, fxc_eff, kxc_eff = ni.eval_xc_eff(
@@ -290,15 +290,15 @@ class TestXCPot(unittest.TestCase):
         exc = (exc_eff * (rho0[0, 0] + rho0[1, 0]) * weights).sum()
         self.assertAlmostEqual(exc, -5.2725625947, places=6)
         # vxc
-        vxc = ni_obj.get_vxc_pot_with_eff(vxc_eff, "SIGMA", spin=1)
+        vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff, "SIGMA", spin=1)
         self.assertEqual(vxc.shape, (2, nao, nao))
         self.assertAlmostEqual(lib.fp(vxc), -13.134537099, places=6)
         # fxc
-        fxc = ni_obj.get_fxc_pot_with_eff(fxc_eff, rho1, "SIGMA", spin=1)
+        fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff, rho1, "SIGMA", spin=1)
         self.assertEqual(fxc.shape, (3, 2, nao, nao))
         self.assertAlmostEqual(lib.fp(fxc), -0.13792205114629885, places=6)
         # kxc
-        kxc = ni_obj.get_kxc_pot_with_eff(kxc_eff, rho1, rho2, "SIGMA", spin=1)
+        kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff, rho1, rho2, "SIGMA", spin=1)
         self.assertEqual(kxc.shape, (9, 3, 2, nao, nao))
         self.assertAlmostEqual(lib.fp(kxc), 0.2770362015666589, places=6)
 
@@ -308,9 +308,9 @@ class TestXCPot(unittest.TestCase):
         nvar = num_nvar("TAU")
         ngrids = coords.shape[0]
         shape_i, shape_o = [-1, nao, nao], [-1, 2, nvar, ngrids]
-        rho0 = ni_obj.get_rho_from_dm(self.dm0, "TAU")
-        rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "TAU").reshape(shape_o)
-        rho2 = ni_obj.get_rho_from_dm(self.dm2.reshape(shape_i), "TAU").reshape(shape_o)
+        rho0 = ni_obj.make_rho_from_dm(self.dm0, "TAU")
+        rho1 = ni_obj.make_rho_from_dm(self.dm1.reshape(shape_i), "TAU").reshape(shape_o)
+        rho2 = ni_obj.make_rho_from_dm(self.dm2.reshape(shape_i), "TAU").reshape(shape_o)
         exc_eff, vxc_eff, fxc_eff, kxc_eff = ni.eval_xc_eff(
             "HYB_MGGA_XC_TPSSH", rho0, deriv=3, spin=1
         )
@@ -327,15 +327,15 @@ class TestXCPot(unittest.TestCase):
         exc = (exc_eff * (rho0[0, 0] + rho0[1, 0]) * weights).sum()
         self.assertAlmostEqual(exc, -4.9638946892, places=6)
         # vxc
-        vxc = ni_obj.get_vxc_pot_with_eff(vxc_eff, "TAU", spin=1)
+        vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff, "TAU", spin=1)
         self.assertEqual(vxc.shape, (2, nao, nao))
         self.assertAlmostEqual(lib.fp(vxc), -12.384391087, places=6)
         # fxc
-        fxc = ni_obj.get_fxc_pot_with_eff(fxc_eff, rho1, "TAU", spin=1)
+        fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff, rho1, "TAU", spin=1)
         self.assertEqual(fxc.shape, (3, 2, nao, nao))
         self.assertAlmostEqual(lib.fp(fxc), 31.692895267010428, places=6)
         # kxc
-        kxc = ni_obj.get_kxc_pot_with_eff(kxc_eff, rho1, rho2, "TAU", spin=1)
+        kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff, rho1, rho2, "TAU", spin=1)
         self.assertEqual(kxc.shape, (9, 3, 2, nao, nao))
         self.assertAlmostEqual(lib.fp(kxc), 6528.81912736829, places=6)
 
@@ -345,8 +345,8 @@ class TestXCPot(unittest.TestCase):
         nvar = num_nvar("TAU")
         ngrids = coords.shape[0]
         shape_i, shape_o = [-1, nao, nao], [-1, 2, nvar, ngrids]
-        rho0 = ni_obj.get_rho_from_dm(self.dm0, "TAU")
-        rho1 = ni_obj.get_rho_from_dm(self.dm1.reshape(shape_i), "TAU").reshape(shape_o)
+        rho0 = ni_obj.make_rho_from_dm(self.dm0, "TAU")
+        rho1 = ni_obj.make_rho_from_dm(self.dm1.reshape(shape_i), "TAU").reshape(shape_o)
         _, _, fxc_eff, _ = ni.eval_xc_eff("HYB_MGGA_XC_TPSSH", rho0, deriv=2, spin=1)
         occ_coeff = [mo_coeff[s][:, mo_occ[s] > 0] for s in range(2)]
         # test of pyscf reference values
@@ -357,7 +357,7 @@ class TestXCPot(unittest.TestCase):
         self.assertAlmostEqual(lib.fp(fxc_bra_trans[0]), 0.07646866826480496, places=6)
         self.assertAlmostEqual(lib.fp(fxc_bra_trans[1]), 0.01717215515438316, places=6)
         # test of current implementation
-        fxc_bra_trans = ni_obj.get_fxc_pot_with_eff_bra_trans(
+        fxc_bra_trans = ni_obj.make_fxc_pot_with_eff_bra_trans(
             fxc_eff, rho1, occ_coeff, "TAU", spin=1
         )
         self.assertAlmostEqual(lib.fp(fxc_bra_trans[0]), 0.07646866826480496, places=6)

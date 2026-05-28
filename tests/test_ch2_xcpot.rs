@@ -145,10 +145,10 @@ mod test_xcpot {
 mod test_xcpot_pure {
     use super::*;
     use rstsr_showcase_dft_grids::numint_matmul::pure_xcpot::{
-        uks_fxc_pot_with_output, uks_kxc_pot_with_output, uks_vxc_pot_with_output,
+        uks_fxc_pot_with_eff_with_output, uks_kxc_pot_with_eff_with_output, uks_vxc_pot_with_eff_with_output,
     };
     use rstsr_showcase_dft_grids::numint_matmul::pure_xcpot_naive::{
-        uks_fxc_pot_with_output_naive, uks_kxc_pot_with_output_naive, uks_vxc_pot_with_output_naive,
+        uks_fxc_pot_with_eff_with_output_naive, uks_kxc_pot_with_eff_with_output_naive, uks_vxc_pot_with_eff_with_output_naive,
     };
 
     fn make_out(shape: &[usize], ch2: &Ch2Molecule) -> Tsr {
@@ -177,7 +177,7 @@ mod test_xcpot_pure {
 
             let mut out_naive = make_out(&[nao, nao, 2], ch2);
             let mut out_opt = make_out(&[nao, nao, 2], ch2);
-            uks_vxc_pot_with_output_naive(
+            uks_vxc_pot_with_eff_with_output_naive(
                 den_type,
                 xc_eff[1].view(),
                 ao.view(),
@@ -185,7 +185,7 @@ mod test_xcpot_pure {
                 out_naive.view_mut(),
             )
             .unwrap();
-            uks_vxc_pot_with_output(den_type, xc_eff[1].view(), ao.view(), ch2.weights.view(), out_opt.view_mut())
+            uks_vxc_pot_with_eff_with_output(den_type, xc_eff[1].view(), ao.view(), ch2.weights.view(), out_opt.view_mut())
                 .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
             assert!(diff < 1e-10, "{:?} vxc naive vs opt max diff = {:.3e}", den_type, diff);
@@ -220,7 +220,7 @@ mod test_xcpot_pure {
 
             let mut out_naive = make_out(&[nao, nao, 2, perturbed_dm.ncomp1], ch2);
             let mut out_opt = make_out(&[nao, nao, 2, perturbed_dm.ncomp1], ch2);
-            uks_fxc_pot_with_output_naive(
+            uks_fxc_pot_with_eff_with_output_naive(
                 den_type,
                 xc_eff[2].view(),
                 rho1.view(),
@@ -229,7 +229,7 @@ mod test_xcpot_pure {
                 out_naive.view_mut(),
             )
             .unwrap();
-            uks_fxc_pot_with_output(
+            uks_fxc_pot_with_eff_with_output(
                 den_type,
                 xc_eff[2].view(),
                 rho1.view(),
@@ -278,7 +278,7 @@ mod test_xcpot_pure {
 
             let mut out_naive = make_out(&[nao, nao, 2, perturbed_dm.ncomp1, perturbed_dm.ncomp2], ch2);
             let mut out_opt = make_out(&[nao, nao, 2, perturbed_dm.ncomp1, perturbed_dm.ncomp2], ch2);
-            uks_kxc_pot_with_output_naive(
+            uks_kxc_pot_with_eff_with_output_naive(
                 den_type,
                 xc_eff[3].view(),
                 rho1.view(),
@@ -288,7 +288,7 @@ mod test_xcpot_pure {
                 out_naive.view_mut(),
             )
             .unwrap();
-            uks_kxc_pot_with_output(
+            uks_kxc_pot_with_eff_with_output(
                 den_type,
                 xc_eff[3].view(),
                 rho1.view(),
