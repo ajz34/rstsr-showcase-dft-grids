@@ -9,12 +9,7 @@ use NIDenType::*;
 /// - `wv` : weight vector, shape `[ngrids, nvar]`
 /// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
 /// - `out` : output buffer, shape `[nao, nao]`; must be zeroed before calling
-fn contract_ao_wv_naive(
-    den_type: NIDenType,
-    wv: TsrView,
-    ao: TsrView,
-    mut out: TsrMut,
-) -> Result<(), NIError> {
+fn contract_ao_wv_naive(den_type: NIDenType, wv: TsrView, ao: TsrView, mut out: TsrMut) -> Result<(), NIError> {
     ni_check_shape!(wv.ndim(), 2, "Weight vector must be 2-dim")?;
     let nvar = wv.shape()[1];
     let ngrids = wv.shape()[0];
@@ -458,13 +453,7 @@ pub fn rks_fxc_pot_with_eff_bra_trans_naive(
     let fxc_eff_weighted = &weights * &fxc_eff;
     for i in 0..nset {
         let fxc_contracted = (&fxc_eff_weighted * rho1.i((.., .., None, i))).sum_axes(1);
-        contract_ao_wv_bra_naive(
-            den_type,
-            fxc_contracted.view(),
-            ao.view(),
-            ao_bra.view(),
-            fxc.i_mut((.., .., i)),
-        )?;
+        contract_ao_wv_bra_naive(den_type, fxc_contracted.view(), ao.view(), ao_bra.view(), fxc.i_mut((.., .., i)))?;
     }
     Ok(())
 }

@@ -148,7 +148,8 @@ mod test_xcpot_pure {
         uks_fxc_pot_with_eff_with_output, uks_kxc_pot_with_eff_with_output, uks_vxc_pot_with_eff_with_output,
     };
     use rstsr_showcase_dft_grids::numint_matmul::pure_xcpot_naive::{
-        uks_fxc_pot_with_eff_with_output_naive, uks_kxc_pot_with_eff_with_output_naive, uks_vxc_pot_with_eff_with_output_naive,
+        uks_fxc_pot_with_eff_with_output_naive, uks_kxc_pot_with_eff_with_output_naive,
+        uks_vxc_pot_with_eff_with_output_naive,
     };
 
     fn make_out(shape: &[usize], ch2: &Ch2Molecule) -> Tsr {
@@ -185,8 +186,14 @@ mod test_xcpot_pure {
                 out_naive.view_mut(),
             )
             .unwrap();
-            uks_vxc_pot_with_eff_with_output(den_type, xc_eff[1].view(), ao.view(), ch2.weights.view(), out_opt.view_mut())
-                .unwrap();
+            uks_vxc_pot_with_eff_with_output(
+                den_type,
+                xc_eff[1].view(),
+                ao.view(),
+                ch2.weights.view(),
+                out_opt.view_mut(),
+            )
+            .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
             assert!(diff < 1e-10, "{:?} vxc naive vs opt max diff = {:.3e}", den_type, diff);
         }

@@ -152,9 +152,8 @@ mod test_xcpot {
         fp_assert_eq!(fxc_bra_trans_ref.view(), 0.11104650048770713, 1e-6);
 
         // test of current implementation
-        let fxc_bra_trans = ni_obj
-            .make_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU, 0)
-            .unwrap();
+        let fxc_bra_trans =
+            ni_obj.make_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU, 0).unwrap();
         fp_assert_eq!(fxc_bra_trans.view(), 0.11104650048770713, 1e-6);
     }
 }
@@ -170,8 +169,8 @@ mod test_xcpot_pure {
         rks_vxc_pot_with_eff_with_output,
     };
     use rstsr_showcase_dft_grids::numint_matmul::pure_xcpot_naive::{
-        rks_fxc_pot_with_eff_bra_trans_naive, rks_fxc_pot_with_eff_with_output_naive, rks_kxc_pot_with_eff_with_output_naive,
-        rks_vxc_pot_with_eff_with_output_naive,
+        rks_fxc_pot_with_eff_bra_trans_naive, rks_fxc_pot_with_eff_with_output_naive,
+        rks_kxc_pot_with_eff_with_output_naive, rks_vxc_pot_with_eff_with_output_naive,
     };
 
     fn make_out(shape: &[usize], h2o: &H2OMolecule) -> Tsr {
@@ -207,8 +206,14 @@ mod test_xcpot_pure {
                 out_naive.view_mut(),
             )
             .unwrap();
-            rks_vxc_pot_with_eff_with_output(den_type, xc_eff[1].view(), ao.view(), h2o.weights.view(), out_opt.view_mut())
-                .unwrap();
+            rks_vxc_pot_with_eff_with_output(
+                den_type,
+                xc_eff[1].view(),
+                ao.view(),
+                h2o.weights.view(),
+                out_opt.view_mut(),
+            )
+            .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
             assert!(diff < 1e-10, "{:?} vxc naive vs opt max diff = {:.3e}", den_type, diff);
         }

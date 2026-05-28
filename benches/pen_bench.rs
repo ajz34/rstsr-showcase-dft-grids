@@ -1,12 +1,13 @@
-mod test_util;
+mod util;
 
 use itertools::Itertools;
 use libcint::prelude::*;
 use libxc::prelude::*;
-use rstest::*;
 use rstsr::prelude::*;
 use rstsr_showcase_dft_grids::prelude::*;
-use test_util::*;
+use std::sync::LazyLock;
+use std::time::Instant;
+use util::*;
 
 use LibXCSpin::*;
 use NIDenType::*;
@@ -14,7 +15,7 @@ use NIDenType::*;
 type Tsr<T = f64> = Tensor<T, DeviceFaer, IxD>;
 
 // ---------------------------------------------------------------------------
-// Fixtures
+// Shared data
 // ---------------------------------------------------------------------------
 
 pub struct PenMolecule {
@@ -84,11 +85,6 @@ basis = "def2-TZVP""#;
         &self.cint_mol.cint
     }
 
-    pub fn build_ni_obj(&self) -> NIMatmul<'_> {
-        let coords_array = self.coords.to_owned().into_pack_array::<3>(0).into_vec();
-        NIMatmul::new(self.cint(), &coords_array, &self.weights.to_vec())
-    }
-
     pub fn bra_list(&self) -> [Tsr; 1] {
         let mo_coeff_arr = self.mo_coeff.to_owned().into_contig(ColMajor);
         let occ_mask = self.mo_occ.view().greater(0.0).into_vec();
@@ -98,49 +94,40 @@ basis = "def2-TZVP""#;
     }
 }
 
-#[fixture]
-#[once]
-fn pen() -> PenMolecule {
-    PenMolecule::load()
-}
+static PEN: LazyLock<PenMolecule> = LazyLock::new(PenMolecule::load);
 
 pub struct PenPerturbedDM {
     pub dm1_flat: Tsr,
     pub ncomp1: usize,
 }
 
-#[fixture]
-#[once]
-fn perturbed_dm(pen: &PenMolecule) -> PenPerturbedDM {
-    let device = pen.rdm1.device().clone();
-    let get_intor = |name: &str| {
-        let (out, shape) = pen.cint().integrate(name, None, None).into();
-        rt::asarray((out, shape, &device))
-    };
-    let dm1: Tsr = (get_intor("int1e_r") + get_intor("int1e_giao_irjxp")) * &pen.rdm1;
-    let dm1: Tsr = 0.5 * (&dm1 + dm1.swapaxes(0, 1));
-    let ncomp1 = dm1.shape()[dm1.ndim() - 1];
+impl PenPerturbedDM {
+    pub fn load(pen: &PenMolecule) -> Self {
+        let device = pen.rdm1.device().clone();
+        let get_intor = |name: &str| {
+            let (out, shape) = pen.cint().integrate(name, None, None).into();
+            rt::asarray((out, shape, &device))
+        };
+        let dm1: Tsr = (get_intor("int1e_r") + get_intor("int1e_giao_irjxp")) * &pen.rdm1;
+        let dm1: Tsr = 0.5 * (&dm1 + dm1.swapaxes(0, 1));
+        let ncomp1 = dm1.shape()[dm1.ndim() - 1];
 
-    PenPerturbedDM { dm1_flat: dm1, ncomp1 }
+        PenPerturbedDM { dm1_flat: dm1, ncomp1 }
+    }
 }
 
-#[rstest]
-fn batched_vxc(pen: &PenMolecule) {
-    // this should recover the pyscf's similar usage of ni.nr_vxc.
+static PERTURBED_DM: LazyLock<PenPerturbedDM> = LazyLock::new(|| PenPerturbedDM::load(&PEN));
 
-    /* Benchmark result
-       - AMD Ryzen 9 9955HX 16-Core Processor
-       - PySCF: 6.94 sec
-       - This implementation: 8.51 sec
-    */
+// ---------------------------------------------------------------------------
+// Benchmarks (single-run, manual timing)
+// ---------------------------------------------------------------------------
 
-    const GRID_BATCH: usize = 384 * 64;
+const GRID_BATCH: usize = 384 * 64;
 
-    // grid setting
+fn bench_batched_vxc(pen: &PenMolecule) {
     let coords = pen.coords.to_owned().into_pack_array::<3>(0).into_vec();
     let weights = pen.weights.to_owned().into_vec();
 
-    // bra, dm1 setting
     let mo_coeff = pen.mo_coeff.to_owned().into_contig(ColMajor);
     let mo_occ = pen.mo_occ.view();
     let occ_mask = mo_occ.view().greater(0.0).into_vec();
@@ -149,7 +136,7 @@ fn batched_vxc(pen: &PenMolecule) {
     let nao = pen.mo_coeff.shape()[0];
     let device = pen.coords.device().clone();
 
-    let time = std::time::Instant::now();
+    let time = Instant::now();
     let mut exc = 0.0;
     let mut vxc: Tsr = rt::zeros(([nao, nao], &device));
     for start in (0..pen.ngrids).step_by(GRID_BATCH) {
@@ -158,7 +145,6 @@ fn batched_vxc(pen: &PenMolecule) {
         let weights = &weights[start..stop];
         let mut ni_obj = NIMatmul::new(pen.cint(), coords, weights);
 
-        // generate rho
         let weights = rt::asarray((weights, &device));
         let rho0 = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], TAU).unwrap();
         let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
@@ -168,40 +154,31 @@ fn batched_vxc(pen: &PenMolecule) {
         let vxc_batch = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), TAU, 0).unwrap();
         vxc += vxc_batch;
     }
-    println!("exc: {exc}");
-    println!("vxc fp: {:?}", fp(vxc.view()));
-    println!("Time taken: {:.3} seconds", time.elapsed().as_secs_f64());
-    assert!((exc - -112.94843155506005).abs() < 1e-4);
+    let elapsed = time.elapsed().as_secs_f64();
+
+    // Verification
+    assert!((exc - -112.94843155506005).abs() < 1e-4, "exc mismatch: {exc}");
     fp_assert_eq!(vxc.view(), 1.371738499479081, 1e-4);
+
+    println!("exc:    {exc}");
+    println!("vxc fp: {:?}", fp(vxc.view()));
+    println!("Time:   {elapsed:.3} s");
 }
 
-#[rstest]
-fn batched_fxc(pen: &PenMolecule, perturbed_dm: &PenPerturbedDM) {
-    // this should recover the pyscf's similar usage of ni.nr_fxc.
-
-    /* Benchmark result
-       - AMD Ryzen 9 9955HX 16-Core Processor
-       - PySCF: 29.3 sec
-       - This implementation: 38.9 sec
-    */
-
-    const GRID_BATCH: usize = 384 * 64;
-
-    // grid setting
+fn bench_batched_fxc(pen: &PenMolecule) {
     let coords = pen.coords.to_owned().into_pack_array::<3>(0).into_vec();
     let weights = pen.weights.to_owned().into_vec();
 
-    // bra, dm1 setting
     let mo_coeff = pen.mo_coeff.to_owned().into_contig(ColMajor);
     let mo_occ = pen.mo_occ.view();
     let occ_mask = mo_occ.view().greater(0.0).into_vec();
     let occ = mo_occ.bool_select(0, &occ_mask);
     let bra = mo_coeff.bool_select(1, &occ_mask) * occ.sqrt().i((None, ..));
-    let dm1 = perturbed_dm.dm1_flat.view();
+    let dm1 = PERTURBED_DM.dm1_flat.view();
     let dm1_list = dm1.axes_iter(-1).collect_vec();
     let device = pen.coords.device().clone();
 
-    let time = std::time::Instant::now();
+    let time = Instant::now();
     let mut fxc: Tsr = rt::zeros((dm1.shape().to_vec(), &device));
     for start in (0..pen.ngrids).step_by(GRID_BATCH) {
         let stop = (start + GRID_BATCH).min(pen.ngrids);
@@ -209,7 +186,6 @@ fn batched_fxc(pen: &PenMolecule, perturbed_dm: &PenPerturbedDM) {
         let weights = &weights[start..stop];
         let mut ni_obj = NIMatmul::new(pen.cint(), coords, weights);
 
-        // generate rho
         let rho0 = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], TAU).unwrap();
         let rho1 = ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap();
         let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
@@ -217,7 +193,23 @@ fn batched_fxc(pen: &PenMolecule, perturbed_dm: &PenPerturbedDM) {
         let fxc_batch = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, 0).unwrap();
         fxc += fxc_batch;
     }
-    println!("fxc fp: {:?}", fp(fxc.view()));
-    println!("Time taken: {:.3} seconds", time.elapsed().as_secs_f64());
+    let elapsed = time.elapsed().as_secs_f64();
+
+    // Verification
     fp_assert_eq!(fxc.view(), -3.2229077357662654, 1e-4);
+
+    println!("fxc fp: {:?}", fp(fxc.view()));
+    println!("Time:   {elapsed:.3} s");
+}
+
+fn main() {
+    let pen = &PEN;
+
+    println!("========== batched_vxc ==========");
+    bench_batched_vxc(pen);
+
+    println!();
+
+    println!("========== batched_fxc ==========");
+    bench_batched_fxc(pen);
 }

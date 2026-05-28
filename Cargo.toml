@@ -12,6 +12,10 @@ itertools = "0.14"
 libxc = "0.1"
 rstsr = { version = "0.7", default-features = false, features = ["col_major", "faer", "faer_as_default"] }
 
+[[bench]]
+name = "pen_bench"
+harness = false
+
 [dev-dependencies]
 rstest = "0.26"
 

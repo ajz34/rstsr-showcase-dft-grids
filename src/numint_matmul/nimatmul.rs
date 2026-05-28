@@ -193,7 +193,8 @@ impl<'a> NIMatmul<'a> {
     ///
     /// # Parameters
     ///
-    /// - `vxc_eff` : effective XC potential, shape `[ngrids, nvar]` for RKS, `[ngrids, nvar, 2]` for UKS
+    /// - `vxc_eff` : effective XC potential, shape `[ngrids, nvar]` for RKS, `[ngrids, nvar, 2]`
+    ///   for UKS
     /// - `den_type` : which density components to compute
     /// - `spin` : 0 for RKS, 1 for UKS
     ///
@@ -227,10 +228,10 @@ impl<'a> NIMatmul<'a> {
     ///
     /// # Parameters
     ///
-    /// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar]` for RKS,
-    ///   `[ngrids, nvar, 2, nvar, 2]` for UKS
-    /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]` for RKS,
-    ///   `[ngrids, nvar, 2, nset]` for UKS
+    /// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar]` for RKS, `[ngrids, nvar, 2,
+    ///   nvar, 2]` for UKS
+    /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]` for RKS, `[ngrids,
+    ///   nvar, 2, nset]` for UKS
     /// - `den_type` : which density components to compute
     /// - `spin` : 0 for RKS, 1 for UKS
     ///
@@ -297,7 +298,13 @@ impl<'a> NIMatmul<'a> {
             let nocc = bra.shape()[1];
             let mut out = rt::zeros(([nao, nocc, nset], &device));
             rks_fxc_pot_with_eff_bra_trans_with_output(
-                den_type, fxc_eff, rho1, ao, weights_tsr.view(), bra, out.view_mut(),
+                den_type,
+                fxc_eff,
+                rho1,
+                ao,
+                weights_tsr.view(),
+                bra,
+                out.view_mut(),
             )?;
             Ok(out)
         } else {
@@ -309,12 +316,12 @@ impl<'a> NIMatmul<'a> {
     ///
     /// # Parameters
     ///
-    /// - `kxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar, nvar]` for RKS,
-    ///   `[ngrids, nvar, 2, nvar, 2, nvar, 2]` for UKS
-    /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset1]` for RKS,
-    ///   `[ngrids, nvar, 2, nset1]` for UKS
-    /// - `rho2` : second-order density response, shape `[ngrids, nvar, nset2]` for RKS,
-    ///   `[ngrids, nvar, 2, nset2]` for UKS
+    /// - `kxc_eff` : effective XC kernel, shape `[ngrids, nvar, nvar, nvar]` for RKS, `[ngrids,
+    ///   nvar, 2, nvar, 2, nvar, 2]` for UKS
+    /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset1]` for RKS, `[ngrids,
+    ///   nvar, 2, nset1]` for UKS
+    /// - `rho2` : second-order density response, shape `[ngrids, nvar, nset2]` for RKS, `[ngrids,
+    ///   nvar, 2, nset2]` for UKS
     /// - `den_type` : which density components to compute
     /// - `spin` : 0 for RKS, 1 for UKS
     ///
