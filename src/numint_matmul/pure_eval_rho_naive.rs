@@ -13,7 +13,6 @@ use super::prelude::*;
 /// - `dm_list` : density matrices, each of shape `[nao, nao]`; one per set
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-/// - `buf` : scratch buffer of length at least `ngrids * nao`
 #[doc = include_str!("docs/get_rho_from_dm_with_output.md")]
 pub fn get_rho_from_dm_with_output_naive(
     ao: TsrView,
@@ -21,10 +20,6 @@ pub fn get_rho_from_dm_with_output_naive(
     den_type: NIDenType,
     mut out: TsrMut,
 ) -> Result<(), NIError> {
-    // ao: [ngrids, nao, ncomp]
-    // dm_list: each element is [nao, nao]
-    // output: [ngrids, ncomp', nset] in column-major
-
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
     let nao = ao.shape()[1];
 
@@ -34,38 +29,32 @@ pub fn get_rho_from_dm_with_output_naive(
     }
     let nset = dm_list.len();
     let ngrids = ao.shape()[0];
-    let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrids, den_type.num_nvar(), nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
-    let buf = &mut vec![0.0; ngrids * nao];
-    let mut scr = rt::asarray((buf, [ngrids, nao].f(), &device));
-
     for (iset, dm) in dm_list.iter().enumerate() {
-        // rho part
-        scr.matmul_from(ao.i((.., .., 0)), dm, 1.0, 0.0);
-        // out.i_mut((.., 0, iset)).vecdot_from(&scr, ao.i((.., .., 0)), 1);
-        out.i_mut((.., 0, iset)).assign(rt::vecdot(&scr, ao.i((.., .., 0)), 1));
-        // sigma part
+        // rho part: scr = ao_0 @ dm
+        let scr = ao.i((.., .., 0)) % dm;
+        *&mut out.i_mut((.., 0, iset)) += (&scr * ao.i((.., .., 0))).sum_axes(1);
+        // sigma part: out[..., 1..4, iset] += 2 * (scr * ao[..., 1..4]).sum(nao)
         if matches!(den_type, SIGMA | TAU | LAPL) {
-            out.i_mut((.., 1..4, iset)).vecdot_from(&scr.i((.., .., None)), ao.i((.., .., 1..4)), 1);
-            *&mut out.i_mut((.., 1..4, iset)) *= 2.0;
+            *&mut out.i_mut((.., 1..4, iset)) += 2 * (&scr * ao.i((.., .., 1..4))).sum_axes(1);
         }
         // lapl part (second derivative of AO)
         if matches!(den_type, LAPL) {
             for t in [4, 7, 9] {
-                *&mut out.i_mut((.., 5, iset)) += 2.0 * rt::vecdot(&scr, ao.i((.., .., t)), 1);
+                *&mut out.i_mut((.., 5, iset)) += 2 * (&scr * ao.i((.., .., t))).sum_axes(1);
             }
         }
-        // tau part
+        // tau part: scr = 0.5 * ao_t @ dm, then += (scr * ao_t).sum(nao)
         if matches!(den_type, TAU | LAPL) {
             for t in 1..4 {
-                scr.matmul_from(ao.i((.., .., t)), dm, 0.5, 0.0);
-                *&mut out.i_mut((.., 4, iset)) += rt::vecdot(&scr, ao.i((.., .., t)), 1);
+                let scr = 0.5 * ao.i((.., .., t)) % dm;
+                *&mut out.i_mut((.., 4, iset)) += (&scr * ao.i((.., .., t))).sum_axes(1);
             }
         }
-        // lapl part (tau contribution)
+        // lapl part (tau contribution): out[..., 5, iset] += 4 * out[..., 4, iset]
         if matches!(den_type, LAPL) {
             let tau_contrib = 4.0 * out.i((.., 4, iset));
             *&mut out.i_mut((.., 5, iset)) += tau_contrib;
@@ -85,7 +74,6 @@ pub fn get_rho_from_dm_with_output_naive(
 ///   occupation number `nocc` is not required to be the same to the whole set
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-/// - `buf` : scratch buffer of length at least `2 * ngrid * nocc_max`
 #[doc = include_str!("docs/get_rho_from_homogeneous_braket_with_output.md")]
 pub fn get_rho_from_homogeneous_braket_with_output_naive(
     ao: TsrView,
@@ -93,56 +81,43 @@ pub fn get_rho_from_homogeneous_braket_with_output_naive(
     den_type: NIDenType,
     mut out: TsrMut,
 ) -> Result<(), NIError> {
-    // ao: [ngrids, nao, ncomp]
-    // bra: [nao, nocc, nset]
-    // output: [ngrids, ncomp', nset]
-
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
     let nao = ao.shape()[1];
 
-    // check sanity of shapes
     for bra in bra_list {
         ni_check_shape!(bra.ndim(), 2, "Each bra must be 2D")?;
         ni_check_shape!(nao, bra.shape()[0], "AO dimension must match braket dimension")?;
     }
-    let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
-
     let nset = bra_list.len();
     let ngrid = ao.shape()[0];
-    let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
-    let buf = &mut vec![0.0; 2 * ngrid * nocc_max];
-
     for (iset, bra) in bra_list.iter().enumerate() {
-        let nocc = bra.shape()[1];
-        let (buf1, buf2) = buf.split_at_mut(ngrid * nocc_max);
-        let mut scr1 = rt::asarray((buf1, [ngrid, nocc].f(), &device));
-        let mut scr2 = rt::asarray((buf2, [ngrid, nocc].f(), &device));
-        // rho part
-        scr1.matmul_from(ao.i((.., .., 0)), bra, 1.0, 0.0);
-        out.i_mut((.., 0, iset)).vecdot_from(&scr1, &scr1, 1);
+        // rho part: scr1 = ao_0 @ bra → [ngrid, nocc]
+        let scr1 = ao.i((.., .., 0)) % bra;
+        *&mut out.i_mut((.., 0, iset)) += (&scr1 * &scr1).sum_axes(1);
+        // sigma & tau parts
         if matches!(den_type, SIGMA | TAU | LAPL) {
             for t in 1..4 {
-                scr2.matmul_from(ao.i((.., .., t)), bra, 1.0, 0.0);
-                // sigma part
-                out.i_mut((.., t, iset)).vecdot_from(&scr1, &scr2, 1);
-                *&mut out.i_mut((.., t, iset)) *= 2.;
-                // tau part
+                let scr2 = ao.i((.., .., t)) % bra;
+                // sigma: out[..., t, iset] += 2 * (scr1 * scr2).sum(nocc)
+                *&mut out.i_mut((.., t, iset)) += 2 * (&scr1 * &scr2).sum_axes(1);
+                // tau: out[..., 4, iset] += 0.5 * (scr2 * scr2).sum(nocc)
                 if matches!(den_type, TAU | LAPL) {
-                    *&mut out.i_mut((.., 4, iset)) += 0.5 * rt::vecdot(&scr2, &scr2, 1);
+                    *&mut out.i_mut((.., 4, iset)) += 0.5 * (&scr2 * &scr2).sum_axes(1);
                 }
             }
         }
+        // lapl part
         if matches!(den_type, LAPL) {
-            // lapl part (second derivative of AO)
+            // second derivative of AO
             for t in [4, 7, 9] {
-                scr2.matmul_from(ao.i((.., .., t)), bra, 1.0, 0.0);
-                *&mut out.i_mut((.., 5, iset)) += 2.0 * rt::vecdot(&scr1, &scr2, 1);
+                let scr2 = ao.i((.., .., t)) % bra;
+                *&mut out.i_mut((.., 5, iset)) += 2 * (&scr1 * &scr2).sum_axes(1);
             }
-            // lapl part (tau contribution)
+            // tau contribution: out[..., 5, iset] += 4 * out[..., 4, iset]
             let tau_contrib = 4.0 * out.i((.., 4, iset));
             *&mut out.i_mut((.., 5, iset)) += tau_contrib;
         }
@@ -162,7 +137,6 @@ pub fn get_rho_from_homogeneous_braket_with_output_naive(
 ///   occupation number `nocc` must be the same as `bra`
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-/// - `buf` : scratch buffer of length at least `3 * ngrid * nocc`
 #[doc = include_str!("docs/get_rho_from_one_bra_mult_ket_with_output.md")]
 pub fn get_rho_from_one_bra_mult_ket_with_output_naive(
     ao: TsrView,
@@ -171,11 +145,6 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_naive(
     den_type: NIDenType,
     mut out: TsrMut,
 ) -> Result<(), NIError> {
-    // ao: [ngrids, nao, ncomp]
-    // bra: [nao, nocc]
-    // ket_list: each [nao, nocc]
-    // output: [ngrids, ncomp', nset]
-
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
     let nao = ao.shape()[1];
 
@@ -190,57 +159,48 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_naive(
     }
     let nset = ket_list.len();
     let ngrid = ao.shape()[0];
-    let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
-    let buf = &mut vec![0.0; 3 * ngrid * nocc];
-
-    let (buf1, buf_rest) = buf.split_at_mut(ngrid * nocc);
-    let (buf2, buf3) = buf_rest.split_at_mut(ngrid * nocc);
-    let mut scr1 = rt::asarray((buf1, [ngrid, nocc].f(), &device));
-    let mut scr2 = rt::asarray((buf2, [ngrid, nocc].f(), &device));
-    let mut scr3 = rt::asarray((buf3, [ngrid, nocc].f(), &device));
-
     // Pre-compute scr1 = ao_0 @ bra (shared across all sets)
-    scr1.matmul_from(ao.i((.., .., 0)), &bra, 1.0, 0.0);
+    let scr1 = ao.i((.., .., 0)) % &bra;
 
     for (iset, ket) in ket_list.iter().enumerate() {
-        // rho part
-        scr2.matmul_from(ao.i((.., .., 0)), ket, 1.0, 0.0);
-        out.i_mut((.., 0, iset)).vecdot_from(&scr1, &scr2, 1);
+        // rho part: scr2 = ao_0 @ ket
+        let scr2 = ao.i((.., .., 0)) % ket;
+        *&mut out.i_mut((.., 0, iset)) += (&scr1 * &scr2).sum_axes(1);
 
-        // sigma part
+        // sigma part: out[..., t, iset] += (scr1 * scr3_ket).sum(nocc) + (scr3_bra * scr2).sum(nocc)
         if matches!(den_type, SIGMA | TAU | LAPL) {
             for t in 1..4 {
-                scr3.matmul_from(ao.i((.., .., t)), ket, 1.0, 0.0);
-                out.i_mut((.., t, iset)).vecdot_from(&scr1, &scr3, 1);
-                scr3.matmul_from(ao.i((.., .., t)), &bra, 1.0, 0.0);
-                *&mut out.i_mut((.., t, iset)) += rt::vecdot(&scr3, &scr2, 1);
+                let scr3 = ao.i((.., .., t)) % ket;
+                *&mut out.i_mut((.., t, iset)) += (&scr1 * &scr3).sum_axes(1);
+                let scr3 = ao.i((.., .., t)) % &bra;
+                *&mut out.i_mut((.., t, iset)) += (&scr3 * &scr2).sum_axes(1);
             }
         }
 
         // lapl part (second derivative of AO), must come before tau which overwrites scr2
         if matches!(den_type, LAPL) {
             for t in [4, 7, 9] {
-                scr3.matmul_from(ao.i((.., .., t)), ket, 1.0, 0.0);
-                *&mut out.i_mut((.., 5, iset)) += rt::vecdot(&scr1, &scr3, 1);
-                scr3.matmul_from(ao.i((.., .., t)), &bra, 1.0, 0.0);
-                *&mut out.i_mut((.., 5, iset)) += rt::vecdot(&scr3, &scr2, 1);
+                let scr3 = ao.i((.., .., t)) % ket;
+                *&mut out.i_mut((.., 5, iset)) += (&scr1 * &scr3).sum_axes(1);
+                let scr3 = ao.i((.., .., t)) % &bra;
+                *&mut out.i_mut((.., 5, iset)) += (&scr3 * &scr2).sum_axes(1);
             }
         }
 
-        // tau part (overwrites scr2, which is no longer needed for sigma/lapl)
+        // tau part: out[..., 4, iset] += 0.5 * (scr3_bra * scr2_ket).sum(nocc)
         if matches!(den_type, TAU | LAPL) {
             for t in 1..4 {
-                scr2.matmul_from(ao.i((.., .., t)), ket, 1.0, 0.0);
-                scr3.matmul_from(ao.i((.., .., t)), &bra, 1.0, 0.0);
-                *&mut out.i_mut((.., 4, iset)) += 0.5 * rt::vecdot(&scr3, &scr2, 1);
+                let scr2 = ao.i((.., .., t)) % ket;
+                let scr3 = ao.i((.., .., t)) % &bra;
+                *&mut out.i_mut((.., 4, iset)) += 0.5 * (&scr3 * &scr2).sum_axes(1);
             }
         }
 
-        // lapl part (tau contribution)
+        // lapl part (tau contribution): out[..., 5, iset] += 4 * out[..., 4, iset]
         if matches!(den_type, LAPL) {
             let tau_contrib = 4.0 * out.i((.., 4, iset));
             *&mut out.i_mut((.., 5, iset)) += tau_contrib;
@@ -262,7 +222,6 @@ pub fn get_rho_from_one_bra_mult_ket_with_output_naive(
 ///   the same length as `bra_list`, and `nocc_i` must match `bra_list[i]`
 /// - `den_type` : which density components to compute
 /// - `out` : output buffer, shape `[ngrids, num_rho_comp, nset]`
-/// - `buf` : scratch buffer of length at least `3 * ngrid * nocc_max`
 pub fn get_rho_from_mult_bra_mult_ket_with_output_naive(
     ao: TsrView,
     bra_list: &[TsrView],
@@ -270,16 +229,10 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output_naive(
     den_type: NIDenType,
     mut out: TsrMut,
 ) -> Result<(), NIError> {
-    // ao: [ngrids, nao, ncomp]
-    // bra_list: each [nao, nocc_i]
-    // ket_list: each [nao, nocc_i]
-    // output: [ngrids, ncomp', nset]
-
     ni_check_shape!(ao.ndim(), 3, "AO values must be 3D")?;
     let nao = ao.shape()[1];
 
     ni_check_shape!(bra_list.len(), ket_list.len(), "bra_list and ket_list must have same length")?;
-    let nocc_max = bra_list.iter().map(|bra| bra.shape()[1]).max().unwrap_or(0);
 
     for (bra, ket) in bra_list.iter().zip(ket_list.iter()) {
         ni_check_shape!(bra.ndim(), 2, "Each bra must be 2D")?;
@@ -290,56 +243,46 @@ pub fn get_rho_from_mult_bra_mult_ket_with_output_naive(
     }
     let nset = bra_list.len();
     let ngrid = ao.shape()[0];
-    let device = ao.device().clone();
 
     ni_check_shape!(out.shape().clone(), [ngrid, den_type.num_nvar(), nset], "Output shape mismatch")?;
     ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
 
-    let buf = &mut vec![0.0; 3 * ngrid * nocc_max];
-
     for (iset, (bra, ket)) in bra_list.iter().zip(ket_list.iter()).enumerate() {
-        let nocc = bra.shape()[1];
-        let (buf1, buf_rest) = buf.split_at_mut(ngrid * nocc_max);
-        let (buf2, buf3) = buf_rest.split_at_mut(ngrid * nocc_max);
-        let mut scr1 = rt::asarray((buf1, [ngrid, nocc].f(), &device));
-        let mut scr2 = rt::asarray((buf2, [ngrid, nocc].f(), &device));
-        let mut scr3 = rt::asarray((buf3, [ngrid, nocc].f(), &device));
+        // rho part: scr1 = ao_0 @ bra, scr2 = ao_0 @ ket
+        let scr1 = ao.i((.., .., 0)) % bra;
+        let scr2 = ao.i((.., .., 0)) % ket;
+        *&mut out.i_mut((.., 0, iset)) += (&scr1 * &scr2).sum_axes(1);
 
-        // rho part
-        scr1.matmul_from(ao.i((.., .., 0)), bra, 1.0, 0.0);
-        scr2.matmul_from(ao.i((.., .., 0)), ket, 1.0, 0.0);
-        out.i_mut((.., 0, iset)).vecdot_from(&scr1, &scr2, 1);
-
-        // sigma part
+        // sigma part: out[..., t, iset] += (scr1 * scr3_ket).sum(nocc) + (scr3_bra * scr2).sum(nocc)
         if matches!(den_type, SIGMA | TAU | LAPL) {
             for t in 1..4 {
-                scr3.matmul_from(ao.i((.., .., t)), ket, 1.0, 0.0);
-                out.i_mut((.., t, iset)).vecdot_from(&scr1, &scr3, 1);
-                scr3.matmul_from(ao.i((.., .., t)), bra, 1.0, 0.0);
-                *&mut out.i_mut((.., t, iset)) += rt::vecdot(&scr3, &scr2, 1);
+                let scr3 = ao.i((.., .., t)) % ket;
+                *&mut out.i_mut((.., t, iset)) += (&scr1 * &scr3).sum_axes(1);
+                let scr3 = ao.i((.., .., t)) % bra;
+                *&mut out.i_mut((.., t, iset)) += (&scr3 * &scr2).sum_axes(1);
             }
         }
 
         // lapl part (second derivative of AO), must come before tau which overwrites scr1/scr2
         if matches!(den_type, LAPL) {
             for t in [4, 7, 9] {
-                scr3.matmul_from(ao.i((.., .., t)), ket, 1.0, 0.0);
-                *&mut out.i_mut((.., 5, iset)) += rt::vecdot(&scr1, &scr3, 1);
-                scr3.matmul_from(ao.i((.., .., t)), bra, 1.0, 0.0);
-                *&mut out.i_mut((.., 5, iset)) += rt::vecdot(&scr3, &scr2, 1);
+                let scr3 = ao.i((.., .., t)) % ket;
+                *&mut out.i_mut((.., 5, iset)) += (&scr1 * &scr3).sum_axes(1);
+                let scr3 = ao.i((.., .., t)) % bra;
+                *&mut out.i_mut((.., 5, iset)) += (&scr3 * &scr2).sum_axes(1);
             }
         }
 
-        // tau part (overwrites scr1/scr2, which are no longer needed for sigma/lapl)
+        // tau part: out[..., 4, iset] += 0.5 * (scr1_bra * scr2_ket).sum(nocc)
         if matches!(den_type, TAU | LAPL) {
             for t in 1..4 {
-                scr1.matmul_from(ao.i((.., .., t)), bra, 1.0, 0.0);
-                scr2.matmul_from(ao.i((.., .., t)), ket, 1.0, 0.0);
-                *&mut out.i_mut((.., 4, iset)) += 0.5 * rt::vecdot(&scr1, &scr2, 1);
+                let scr1 = ao.i((.., .., t)) % bra;
+                let scr2 = ao.i((.., .., t)) % ket;
+                *&mut out.i_mut((.., 4, iset)) += 0.5 * (&scr1 * &scr2).sum_axes(1);
             }
         }
 
-        // lapl part (tau contribution)
+        // lapl part (tau contribution): out[..., 5, iset] += 4 * out[..., 4, iset]
         if matches!(den_type, LAPL) {
             let tau_contrib = 4.0 * out.i((.., 4, iset));
             *&mut out.i_mut((.., 5, iset)) += tau_contrib;
