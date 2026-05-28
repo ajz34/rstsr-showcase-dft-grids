@@ -186,6 +186,33 @@ impl<'a> NIMatMul<'a> {
         }
     }
 
+    pub fn make_fxc_pot_with_eff_bra_trans(
+        &mut self,
+        fxc_eff: TsrView,
+        rho1: TsrView,
+        bra: TsrView,
+        den_type: NIDenType,
+        spin: usize,
+    ) -> Result<Tsr, NIError> {
+        let weights_data = self.weights.clone();
+        let ao = self.get_cached_ao(den_type.num_ao_deriv());
+        let nao = ao.shape()[1];
+        let device = ao.device().clone();
+        let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
+
+        if spin == 0 {
+            let nset = rho1.shape()[2];
+            let nocc = bra.shape()[1];
+            let mut out = rt::zeros(([nao, nocc, nset], &device));
+            rks_fxc_pot_with_eff_bra_trans_with_output(
+                den_type, fxc_eff, rho1, ao, weights_tsr.view(), bra, out.view_mut(),
+            )?;
+            Ok(out)
+        } else {
+            unimplemented!("UKS fxc_pot_with_eff_bra_trans is not yet implemented")
+        }
+    }
+
     pub fn make_kxc_pot_with_eff(
         &mut self,
         kxc_eff: TsrView,

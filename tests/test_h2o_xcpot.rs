@@ -123,6 +123,40 @@ mod test_xcpot {
         fp_assert_eq!(fxc.view(), -0.09110536214579629, 1e-6);
         fp_assert_eq!(kxc.view(), 0.5466595210064285, 1e-6);
     }
+
+    #[rstest]
+    fn test_tau_bra_trans(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
+        let mut ni_obj = h2o.build_ni_obj();
+        let rho0 = ni_obj.make_rho_from_dm(&[dm0_view(h2o)], TAU).unwrap().into_squeeze(-1);
+        let dm1_list = perturbed_dm.dm1_flat.axes_iter(-1).collect_vec();
+        let rho1 = ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap();
+
+        let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
+        let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 2, true).unwrap();
+
+        // unscaled occ_coeff: mo_coeff columns where mo_occ > 0
+        let mo_coeff_arr = h2o.mo_coeff.to_owned().into_contig(ColMajor);
+        let occ_mask = h2o.mo_occ.view().greater(0.0).into_vec();
+        let occ_coeff = mo_coeff_arr.bool_select(1, &occ_mask);
+
+        // reference: fxc_bra_trans = occ_coeff.T @ fxc
+        let fxc = ni_obj.make_fxc_pot_with_eff(xc_eff[2].view(), rho1.view(), TAU, 0).unwrap();
+        let nset = fxc.shape()[2];
+        let nao = fxc.shape()[0];
+        let nocc = occ_coeff.shape()[1];
+        let device = fxc.device().clone();
+        let mut fxc_bra_trans_ref: Tsr = rt::zeros(([nao, nocc, nset], &device));
+        for i in 0..nset {
+            fxc_bra_trans_ref.i_mut((.., .., i)).matmul_from(fxc.i((.., .., i)).t(), &occ_coeff, 1.0, 0.0);
+        }
+        fp_assert_eq!(fxc_bra_trans_ref.view(), 0.11104650048770713, 1e-6);
+
+        // test of current implementation
+        let fxc_bra_trans = ni_obj
+            .make_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU, 0)
+            .unwrap();
+        fp_assert_eq!(fxc_bra_trans.view(), 0.11104650048770713, 1e-6);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -132,10 +166,12 @@ mod test_xcpot {
 mod test_xcpot_pure {
     use super::*;
     use rstsr_showcase_dft_grids::numint_matmul::pure_xcpot::{
-        rks_fxc_pot_with_output, rks_kxc_pot_with_output, rks_vxc_pot_with_output,
+        rks_fxc_pot_with_eff_bra_trans_with_output, rks_fxc_pot_with_output, rks_kxc_pot_with_output,
+        rks_vxc_pot_with_output,
     };
     use rstsr_showcase_dft_grids::numint_matmul::pure_xcpot_naive::{
-        rks_fxc_pot_with_output_naive, rks_kxc_pot_with_output_naive, rks_vxc_pot_with_output_naive,
+        rks_fxc_pot_with_eff_bra_trans_naive, rks_fxc_pot_with_output_naive, rks_kxc_pot_with_output_naive,
+        rks_vxc_pot_with_output_naive,
     };
 
     fn make_out(shape: &[usize], h2o: &H2OMolecule) -> Tsr {
@@ -269,6 +305,56 @@ mod test_xcpot_pure {
             .unwrap();
             let diff = (&out_naive - &out_opt).abs().max();
             assert!(diff < 1e-10, "{:?} kxc naive vs opt max diff = {:.3e}", den_type, diff);
+        }
+    }
+
+    #[rstest]
+    fn test_rks_fxc_pot_bra_trans_naive_vs_optimized(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
+        let mut ni_obj = h2o.build_ni_obj();
+        let bra_arr = h2o.bra_list();
+        let bra = &bra_arr[0];
+        let nocc = bra.shape()[1];
+        for den_type in [RHO, SIGMA, TAU] {
+            let rho0 = ni_obj.make_rho_from_dm(&[h2o.rdm1.view()], den_type).unwrap().into_squeeze(-1);
+            let dm1_list: Vec<_> = perturbed_dm.dm1_flat.axes_iter(-1).collect();
+            let rho1 = ni_obj.make_rho_from_dm(&dm1_list, den_type).unwrap();
+            let xc_func = LibXCFunctional::from_identifier(
+                match den_type {
+                    RHO => "LDA_X",
+                    SIGMA => "GGA_X_PBE",
+                    TAU => "HYB_MGGA_XC_TPSSH",
+                    _ => unreachable!(),
+                },
+                Unpolarized,
+            );
+            let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 2, true).unwrap();
+            let ao = ni_obj.prepare_ao(den_type.num_ao_deriv());
+            let nao = ao.shape()[1];
+
+            let mut out_naive = make_out(&[nao, nocc, perturbed_dm.ncomp1], h2o);
+            let mut out_opt = make_out(&[nao, nocc, perturbed_dm.ncomp1], h2o);
+            rks_fxc_pot_with_eff_bra_trans_naive(
+                den_type,
+                xc_eff[2].view(),
+                rho1.view(),
+                ao.view(),
+                h2o.weights.view(),
+                bra.view(),
+                out_naive.view_mut(),
+            )
+            .unwrap();
+            rks_fxc_pot_with_eff_bra_trans_with_output(
+                den_type,
+                xc_eff[2].view(),
+                rho1.view(),
+                ao.view(),
+                h2o.weights.view(),
+                bra.view(),
+                out_opt.view_mut(),
+            )
+            .unwrap();
+            let diff = (&out_naive - &out_opt).abs().max();
+            assert!(diff < 1e-10, "{:?} fxc_bra_trans naive vs opt max diff = {:.3e}", den_type, diff);
         }
     }
 }
