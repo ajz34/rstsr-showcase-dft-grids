@@ -1,5 +1,6 @@
 mod test_util;
 
+use itertools::Itertools;
 use libxc::prelude::*;
 use rstest::*;
 use rstsr::prelude::*;
@@ -150,6 +151,64 @@ mod test_xcpot_from_dm_naive {
         assert!((nelec - 6.0).abs() < 1e-5);
         assert!((exc - -4.7040426008).abs() < 1e-6);
         fp_assert_eq!(vxc.view(), -12.7427734694, 1e-6);
+
+        let bra_list = ch2.bra_list();
+        let bra_views = [bra_list[0].view(), bra_list[1].view()];
+        let (nelec, exc, vxc) = compute_uks_vxc_from_homogenous_bra_naive(&ni_obj, &xc_func, &bra_views).unwrap();
+        assert!((nelec - 6.0).abs() < 1e-5);
+        assert!((exc - -4.7040426008).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -12.7427734694, 1e-6);
+
+        let nao = dm0.shape()[0];
+        let dm1_list = perturbed_dm.dm1_flat.reshape((nao, nao, 2, -1)).axes_iter(-1).collect_vec();
+        let fxc = compute_uks_fxc_from_dm_naive(&ni_obj, &xc_func, dm0.view(), &dm1_list).unwrap();
+        fp_assert_eq!(fxc.view(), -0.2560478462754152, 1e-6);
+    }
+
+    #[rstest]
+    fn test_tau(ch2: &Ch2Molecule, perturbed_dm: &Ch2PerturbedDM) {
+        let ni_obj = ch2.build_ni_obj();
+        let dm0 = ch2.rdm1.view();
+        let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Polarized);
+        let (nelec, exc, vxc) = compute_uks_vxc_from_dm_naive(&ni_obj, &xc_func, dm0.view()).unwrap();
+        assert!((nelec - 6.0).abs() < 1e-5);
+        assert!((exc - -4.9638946892).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -12.384391087, 1e-6);
+
+        let bra_list = ch2.bra_list();
+        let bra_views = [bra_list[0].view(), bra_list[1].view()];
+        let (nelec, exc, vxc) = compute_uks_vxc_from_homogenous_bra_naive(&ni_obj, &xc_func, &bra_views).unwrap();
+        assert!((nelec - 6.0).abs() < 1e-5);
+        assert!((exc - -4.9638946892).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -12.384391087, 1e-6);
+
+        let nao = dm0.shape()[0];
+        let dm1_list = perturbed_dm.dm1_flat.reshape((nao, nao, 2, -1)).axes_iter(-1).collect_vec();
+        let fxc = compute_uks_fxc_from_dm_naive(&ni_obj, &xc_func, dm0.view(), &dm1_list).unwrap();
+        fp_assert_eq!(fxc.view(), 31.692895267010428, 1e-6);
+
+        // test braket version same to dm version for tau case
+        let dm1p_ket = perturbed_dm
+            .dm1_flat
+            .reshape((nao, nao, 2, -1))
+            .axes_iter(-1)
+            .map(|dm1| [dm1.i((.., .., 0)) % &bra_views[0], dm1.i((.., .., 1)) % &bra_views[1]])
+            .collect_vec();
+        let dm1p = dm1p_ket
+            .iter()
+            .map(|dm1p_ket| {
+                let d_alpha = &bra_views[0] % &dm1p_ket[0].t();
+                let d_beta = &bra_views[1] % &dm1p_ket[1].t();
+                let d: Tsr = rt::stack(([d_alpha, d_beta], -1));
+                (&d + d.swapaxes(0, 1)) * 0.5
+            })
+            .collect_vec();
+        let dm1p_ket_list = dm1p_ket.iter().map(|dm1p_ket| [dm1p_ket[0].view(), dm1p_ket[1].view()]).collect_vec();
+        let dm1p_list = dm1p.iter().map(|dm1p| dm1p.view()).collect_vec();
+        let fxc_by_dm = compute_uks_fxc_from_dm_naive(&ni_obj, &xc_func, dm0.view(), &dm1p_list).unwrap();
+        let fxc_by_braket =
+            compute_uks_fxc_from_braket_naive(&ni_obj, &xc_func, &bra_views, &bra_views, &dm1p_ket_list).unwrap();
+        assert!(rt::allclose(fxc_by_dm, fxc_by_braket, None));
     }
 }
 

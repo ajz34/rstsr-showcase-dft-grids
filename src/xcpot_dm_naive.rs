@@ -46,8 +46,8 @@ pub fn compute_rks_vxc_from_dm_naive(
         let weights = rt::asarray((weights, &device));
         let rho = ni_cur.make_rho_from_dm(&[dm0.view()], den_type)?;
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.i((.., .., 0)), 1, true)?.try_into().unwrap();
-        nelec += (&weights * rho.i((.., 0))).sum();
-        exc += (exc_eff * &weights * rho.i((.., 0))).sum();
+        nelec += (&weights * rho.i((.., 0, 0))).sum();
+        exc += (exc_eff * &weights * rho.i((.., 0, 0))).sum();
         let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 0)?;
         vxc += vxc_batch;
     }
@@ -100,8 +100,8 @@ pub fn compute_rks_vxc_from_homogenous_bra_naive(
         let weights = rt::asarray((weights, &device));
         let rho = ni_cur.make_rho_from_homogeneous_braket(&[bra.view()], den_type)?;
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.i((.., .., 0)), 1, true)?.try_into().unwrap();
-        nelec += (&weights * rho.i((.., 0))).sum();
-        exc += (exc_eff * &weights * rho.i((.., 0))).sum();
+        nelec += (&weights * rho.i((.., 0, 0))).sum();
+        exc += (exc_eff * &weights * rho.i((.., 0, 0))).sum();
         let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 0)?;
         vxc += vxc_batch;
     }
@@ -264,7 +264,7 @@ pub fn compute_uks_vxc_from_dm_naive(
 
         let weights = rt::asarray((weights, &device));
         let rho = ni_cur.make_rho_from_dm(&dm0_list, den_type)?;
-        let rho_spin_sum = rho.i((.., .., 0)) + rho.i((.., .., 1));
+        let rho_spin_sum = rho.i((.., 0, 0)) + rho.i((.., 0, 1));
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.view(), 1, true)?.try_into().unwrap();
         nelec += (&weights * &rho_spin_sum).sum();
         exc += (exc_eff * &weights * &rho_spin_sum).sum();
@@ -273,4 +273,200 @@ pub fn compute_uks_vxc_from_dm_naive(
     }
 
     Ok((nelec, exc, vxc))
+}
+
+/// Reference implementation that covers `dft.numint.nr_uks` usage, using homogenous bra instead of
+/// density matrix.
+///
+/// Note for PySCF, the homogenous bra is constructed by `lib.tag_array`, tag `mo_coeff` and
+/// `mo_occ` to density matrix (`rdm1`).
+///
+/// # Parameters
+///
+/// - `ni_obj`: The NIMatmul object containing the grid and integral information.
+/// - `xc_func`: The LibXC functional to evaluate.
+/// - `bra`: The homogenous bra, must be two tensor views, first shape `[nao, nocc_alpha]`, second
+///   shape `[nao, nocc_beta]`.
+pub fn compute_uks_vxc_from_homogenous_bra_naive(
+    ni_obj: &NIMatmul,
+    xc_func: &LibXCFunctional,
+    bra_list: &[TsrView; 2],
+) -> Result<(f64, f64, Tsr), NIError> {
+    let device = bra_list[0].device().clone();
+    let den_type = determine_den_type(xc_func)?;
+    if xc_func.spin() != Polarized {
+        return Err(ni_error!("Only polarized functionals are supported in this function"));
+    }
+    let ngrids = ni_obj.weights.len();
+    let nao = bra_list[0].shape()[0];
+    for bra in bra_list {
+        ni_check_shape!(bra.ndim(), 2, "each bra must be 2-dim for polarized case")?;
+        ni_check_shape!(bra.shape()[0], nao, "each bra must have shape (nao, nocc) for polarized case")?;
+    }
+
+    let nbatch = ni_obj.nbatch;
+
+    let mut nelec = 0.0;
+    let mut exc = 0.0;
+    let mut vxc = rt::zeros(([nao, nao, 2], &device));
+
+    for start in (0..ngrids).step_by(nbatch) {
+        let stop = (start + nbatch).min(ngrids);
+        let coords = &ni_obj.coords[start..stop];
+        let weights = &ni_obj.weights[start..stop];
+        // create a new NIMatmul object for the current batch of grid points
+        let mut ni_cur = NIMatmul::new(&ni_obj.cint, coords, weights);
+        ni_cur.nchunk = ni_obj.nchunk;
+
+        let weights = rt::asarray((weights, &device));
+        let rho = ni_cur.make_rho_from_homogeneous_braket(bra_list, den_type)?;
+        let rho_spin_sum = rho.i((.., 0, 0)) + rho.i((.., 0, 1));
+        let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.view(), 1, true)?.try_into().unwrap();
+        nelec += (&weights * &rho_spin_sum).sum();
+        exc += (exc_eff * &weights * &rho_spin_sum).sum();
+        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 1)?;
+        vxc += vxc_batch;
+    }
+
+    Ok((nelec, exc, vxc))
+}
+
+/// Reference implementation that covers `dft.numint.nr_uks_fxc` usage.
+///
+/// Make sure input density matrix is symmetrized.
+///
+/// # Parameters
+///
+/// - `ni_obj`: The NIMatmul object containing the grid and integral information.
+/// - `xc_func`: The LibXC functional to evaluate.
+/// - `dm0`: The density matrix (usually SCF density), shape `[nao, nao, 2]`.
+/// - `dm1`: The perturbed density matrix (usually from response), each of shape `[nao, nao, 2]`.
+pub fn compute_uks_fxc_from_dm_naive(
+    ni_obj: &NIMatmul,
+    xc_func: &LibXCFunctional,
+    dm0: TsrView,
+    dm1_list: &[TsrView],
+) -> Result<Tsr, NIError> {
+    let device = dm0.device().clone();
+    let den_type = determine_den_type(xc_func)?;
+    if xc_func.spin() != Polarized {
+        return Err(ni_error!("Only polarized functionals are supported in this function"));
+    }
+    let ngrids = ni_obj.weights.len();
+    ni_check_shape!(dm0.ndim(), 3, "dm0 must be 3-dim for polarized case")?;
+    let nao = dm0.shape()[0];
+    ni_check_shape!(dm0.shape(), [nao, nao, 2], "dm0 must have shape (nao, nao, 2) for polarized case")?;
+    let dm0_list = dm0.axes_iter(-1).collect_vec();
+    for dm1 in dm1_list {
+        ni_check_shape!(dm1.shape(), [nao, nao, 2], "dm1 must have shape (nao, nao, 2) for polarized case")?;
+    }
+    let nset = dm1_list.len();
+
+    let nbatch = ni_obj.nbatch;
+
+    let mut fxc = rt::zeros(([nao, nao, 2, nset], &device));
+
+    for start in (0..ngrids).step_by(nbatch) {
+        let stop = (start + nbatch).min(ngrids);
+        let coords = &ni_obj.coords[start..stop];
+        let weights = &ni_obj.weights[start..stop];
+        // create a new NIMatmul object for the current batch of grid points
+        let mut ni_cur = NIMatmul::new(&ni_obj.cint, coords, weights);
+        ni_cur.nchunk = ni_obj.nchunk;
+
+        let rho0 = ni_cur.make_rho_from_dm(&dm0_list, den_type)?;
+
+        // when making densities of dm1, we need to first make flatten views of dm1_list, then reshape back
+        // [nao, nao, 2, nset] -> [nao, nao, 2 * nset]
+        let dm1_flat = dm1_list.iter().flat_map(|dm1| dm1.axes_iter(-1)).collect_vec();
+        let nvar = den_type.num_nvar();
+        let rho1 = ni_cur.make_rho_from_dm(&dm1_flat, den_type)?;
+        // [ngrids, nvar, 2 * nset] -> [ngrids, nvar, 2, nset]
+        let rho1 = rho1.into_shape((stop - start, nvar, 2, nset));
+
+        let xc_eff = libxc_eval_eff(xc_func, rho0.view(), 2, true)?;
+        let fxc_eff = &xc_eff[2];
+        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, 1)?;
+        fxc += fxc_batch;
+    }
+    Ok(fxc)
+}
+
+/// Reference implementation that covers `dft.numint.nr_uks_fxc` usage, using homogenous bra instead
+/// of density matrix for dm0, and one_bra_mult_ket instead of list of densities for dm1.
+///
+/// # Parameters
+///
+/// - `ni_obj`: The NIMatmul object containing the grid and integral information.
+/// - `xc_func`: The LibXC functional to evaluate.
+/// - `bra0`: The homogenous bra for the unperturbed density, must be two tensor views, first shape
+///   `[nao, nocc_alpha]`, second shape `[nao, nocc_beta]`.
+/// - `bra1`: The homogenous bra for the perturbed density, must be two tensor views, first shape
+///   `[nao, nocc1_alpha]`, second shape `[nao, nocc1_beta]`.
+/// - `ket1_list`: The list of kets for the perturbed density, each must be two tensor views, first
+///   shape `[nao, nocc1_alpha]`, second shape `[nao, nocc1_beta]`.
+pub fn compute_uks_fxc_from_braket_naive(
+    ni_obj: &NIMatmul,
+    xc_func: &LibXCFunctional,
+    bra0: &[TsrView; 2],
+    bra1: &[TsrView; 2],
+    ket1_list: &[[TsrView; 2]],
+) -> Result<Tsr, NIError> {
+    let device = bra0[0].device().clone();
+    let den_type = determine_den_type(xc_func)?;
+    if xc_func.spin() != Polarized {
+        return Err(ni_error!("Only polarized functionals are supported in this function"));
+    }
+    let ngrids = ni_obj.weights.len();
+    let nao = bra0[0].shape()[0];
+    for bra in bra0 {
+        ni_check_shape!(bra.ndim(), 2, "each bra in bra0 must be 2-dim for polarized case")?;
+        ni_check_shape!(bra.shape()[0], nao, "each bra in bra0 must have shape (nao, nocc) for polarized case")?;
+    }
+    for bra in bra1 {
+        ni_check_shape!(bra.ndim(), 2, "each bra in bra1 must be 2-dim for polarized case")?;
+        ni_check_shape!(bra.shape()[0], nao, "each bra in bra1 must have shape (nao, nocc) for polarized case")?;
+    }
+    let nocc1_alpha = bra1[0].shape()[1];
+    let nocc1_beta = bra1[1].shape()[1];
+    for ket1 in ket1_list {
+        ni_check_shape!(
+            ket1[0].shape(),
+            [nao, nocc1_alpha],
+            "ket1 alpha must have shape (nao, nocc) for polarized case"
+        )?;
+        ni_check_shape!(
+            ket1[1].shape(),
+            [nao, nocc1_beta],
+            "ket1 beta must have shape (nao, nocc) for polarized case"
+        )?;
+    }
+    let nset = ket1_list.len();
+    let nbatch = ni_obj.nbatch;
+    let mut fxc = rt::zeros(([nao, nao, 2, nset], &device));
+
+    // bra-ket version of rho1 is more tricky.
+    // we need to handle alpha and beta separately, then stack them together in the end.
+    let ket1_flat_alpha = ket1_list.iter().map(|ket1| ket1[0].view()).collect_vec();
+    let ket1_flat_beta = ket1_list.iter().map(|ket1| ket1[1].view()).collect_vec();
+
+    for start in (0..ngrids).step_by(nbatch) {
+        let stop = (start + nbatch).min(ngrids);
+        let coords = &ni_obj.coords[start..stop];
+        let weights = &ni_obj.weights[start..stop];
+        // create a new NIMatmul object for the current batch of grid points
+        let mut ni_cur = NIMatmul::new(&ni_obj.cint, coords, weights);
+        ni_cur.nchunk = ni_obj.nchunk;
+
+        let rho0 = ni_cur.make_rho_from_homogeneous_braket(bra0, den_type)?;
+        let rho1_alpha = ni_cur.make_rho_from_one_bra_mult_ket(bra1[0].view(), &ket1_flat_alpha, den_type)?;
+        let rho1_beta = ni_cur.make_rho_from_one_bra_mult_ket(bra1[1].view(), &ket1_flat_beta, den_type)?;
+        let rho1: Tsr = rt::stack(([rho1_alpha, rho1_beta], -2));
+
+        let xc_eff = libxc_eval_eff(xc_func, rho0.view(), 2, true)?;
+        let fxc_eff = &xc_eff[2];
+        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, 1)?;
+        fxc += fxc_batch;
+    }
+    Ok(fxc)
 }
