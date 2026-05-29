@@ -155,21 +155,73 @@ mod test_xcpot {
 }
 
 mod test_xcpot_from_dm_naive {
-    use rstsr_showcase_dft_grids::xcpot_dm_naive::make_rks_xcpot_from_dm_naive;
-
     use super::*;
+    use rstsr_showcase_dft_grids::xcpot_dm_naive::*;
 
     #[rstest]
     fn test_rho(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
         let ni_obj = h2o.build_ni_obj();
         let dm0 = h2o.rdm1.view();
         let xc_func = LibXCFunctional::from_identifier("LDA_X", Unpolarized);
-        let (nelec, exc, vxc) = make_rks_xcpot_from_dm_naive(&ni_obj, &xc_func, dm0).unwrap();
+        let (nelec, exc, vxc) = make_rks_vxc_from_dm_naive(&ni_obj, &xc_func, dm0.view()).unwrap();
         assert!((nelec - 10.0).abs() < 1e-5);
         assert!((exc - -8.1384975323).abs() < 1e-6);
         fp_assert_eq!(vxc.view(), -27.2331156537, 1e-6);
-        // fp_assert_eq!(fxc.view(), -0.09693300035135462, 1e-6);
-        // fp_assert_eq!(kxc.view(), 0.3789165091826895, 1e-6);
+
+        let mo_occ = h2o.mo_occ.view();
+        let mo_coeff = h2o.mo_coeff.view();
+        let occ_mask = mo_occ.view().greater(0.0).into_vec();
+        let occ = mo_occ.bool_select(0, &occ_mask);
+        let bra = mo_coeff.bool_select(1, &occ_mask) * occ.sqrt().i((None, ..));
+        let (nelec, exc, vxc) = make_rks_vxc_from_homogenous_bra_naive(&ni_obj, &xc_func, bra.view()).unwrap();
+        assert!((nelec - 10.0).abs() < 1e-5);
+        assert!((exc - -8.1384975323).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -27.2331156537, 1e-6);
+
+        let dm1_list = perturbed_dm.dm1_flat.axes_iter(-1).collect_vec();
+        let fxc = make_rks_fxc_from_dm_naive(&ni_obj, &xc_func, dm0.view(), &dm1_list).unwrap();
+        fp_assert_eq!(fxc.view(), -0.09693300035135462, 1e-6);
+    }
+
+    #[rstest]
+    fn test_tau(h2o: &H2OMolecule, perturbed_dm: &H2OPerturbedDM) {
+        let ni_obj = h2o.build_ni_obj();
+        let dm0 = h2o.rdm1.view();
+        let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
+        let (nelec, exc, vxc) = make_rks_vxc_from_dm_naive(&ni_obj, &xc_func, dm0.view()).unwrap();
+        assert!((nelec - 10.0).abs() < 1e-5);
+        assert!((exc - -8.4667246286).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -26.3517912584, 1e-6);
+
+        let mo_occ = h2o.mo_occ.view();
+        let mo_coeff = h2o.mo_coeff.view();
+        let occ_mask = mo_occ.view().greater(0.0).into_vec();
+        let occ = mo_occ.bool_select(0, &occ_mask);
+        let bra = mo_coeff.bool_select(1, &occ_mask) * occ.sqrt().i((None, ..));
+        let (nelec, exc, vxc) = make_rks_vxc_from_homogenous_bra_naive(&ni_obj, &xc_func, bra.view()).unwrap();
+        assert!((nelec - 10.0).abs() < 1e-5);
+        assert!((exc - -8.4667246286).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -26.3517912584, 1e-6);
+
+        let dm1_list = perturbed_dm.dm1_flat.axes_iter(-1).collect_vec();
+        let fxc = make_rks_fxc_from_dm_naive(&ni_obj, &xc_func, dm0.view(), &dm1_list).unwrap();
+        fp_assert_eq!(fxc.view(), -0.09110536214579629, 1e-6);
+
+        // test braket version same to dm version for tau case
+        let dm1p_ket = dm1_list.iter().map(|dm1| dm1 % &bra).collect_vec();
+        let dm1p = dm1p_ket
+            .iter()
+            .map(|dm1p_ket| {
+                let d = &bra % dm1p_ket.t();
+                (&d + d.swapaxes(0, 1)) * 0.5
+            })
+            .collect_vec();
+        let dm1p_ket_list = dm1p_ket.iter().map(|dm1p_ket| dm1p_ket.view()).collect_vec();
+        let dm1p_list = dm1p.iter().map(|dm1p| dm1p.view()).collect_vec();
+        let fxc_by_dm = make_rks_fxc_from_dm_naive(&ni_obj, &xc_func, dm0.view(), &dm1p_list).unwrap();
+        let fxc_by_braket =
+            make_rks_fxc_from_braket_naive(&ni_obj, &xc_func, bra.view(), bra.view(), &dm1p_ket_list).unwrap();
+        assert!(rt::allclose(fxc_by_dm, fxc_by_braket, None));
     }
 }
 
