@@ -255,7 +255,7 @@ impl<'a> NIMatmul<'a> {
         &mut self,
         vxc_eff: TsrView,
         den_type: NIDenType,
-        spin: usize,
+        spin: NISpin,
     ) -> Result<Tsr, NIError> {
         let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
@@ -264,14 +264,17 @@ impl<'a> NIMatmul<'a> {
         let device = ao.device().clone();
         let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
 
-        if spin == 0 {
-            let mut out = rt::zeros(([nao, nao], &device));
-            rks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
-            Ok(out)
-        } else {
-            let mut out = rt::zeros(([nao, nao, 2], &device));
-            uks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
-            Ok(out)
+        match spin {
+            NISpin::Unpolarized => {
+                let mut out = rt::zeros(([nao, nao], &device));
+                rks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
+                Ok(out)
+            },
+            NISpin::Polarized => {
+                let mut out = rt::zeros(([nao, nao, 2], &device));
+                uks_vxc_pot_with_eff_with_output(den_type, vxc_eff, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
+                Ok(out)
+            },
         }
     }
 
@@ -294,7 +297,7 @@ impl<'a> NIMatmul<'a> {
         fxc_eff: TsrView,
         rho1: TsrView,
         den_type: NIDenType,
-        spin: usize,
+        spin: NISpin,
     ) -> Result<Tsr, NIError> {
         let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
@@ -303,16 +306,35 @@ impl<'a> NIMatmul<'a> {
         let device = ao.device().clone();
         let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
 
-        if spin == 0 {
-            let nset = rho1.shape()[2];
-            let mut out = rt::zeros(([nao, nao, nset], &device));
-            rks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
-            Ok(out)
-        } else {
-            let nset = rho1.shape()[3];
-            let mut out = rt::zeros(([nao, nao, 2, nset], &device));
-            uks_fxc_pot_with_eff_with_output(den_type, fxc_eff, rho1, ao, weights_tsr.view(), out.view_mut(), nchunk)?;
-            Ok(out)
+        match spin {
+            NISpin::Unpolarized => {
+                let nset = rho1.shape()[2];
+                let mut out = rt::zeros(([nao, nao, nset], &device));
+                rks_fxc_pot_with_eff_with_output(
+                    den_type,
+                    fxc_eff,
+                    rho1,
+                    ao,
+                    weights_tsr.view(),
+                    out.view_mut(),
+                    nchunk,
+                )?;
+                Ok(out)
+            },
+            NISpin::Polarized => {
+                let nset = rho1.shape()[3];
+                let mut out = rt::zeros(([nao, nao, 2, nset], &device));
+                uks_fxc_pot_with_eff_with_output(
+                    den_type,
+                    fxc_eff,
+                    rho1,
+                    ao,
+                    weights_tsr.view(),
+                    out.view_mut(),
+                    nchunk,
+                )?;
+                Ok(out)
+            },
         }
     }
 
@@ -337,7 +359,7 @@ impl<'a> NIMatmul<'a> {
         rho1: TsrView,
         bra: TsrView,
         den_type: NIDenType,
-        spin: usize,
+        spin: NISpin,
     ) -> Result<Tsr, NIError> {
         let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
@@ -346,23 +368,24 @@ impl<'a> NIMatmul<'a> {
         let device = ao.device().clone();
         let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
 
-        if spin == 0 {
-            let nset = rho1.shape()[2];
-            let nocc = bra.shape()[1];
-            let mut out = rt::zeros(([nao, nocc, nset], &device));
-            rks_fxc_pot_with_eff_bra_trans_with_output(
-                den_type,
-                fxc_eff,
-                rho1,
-                ao,
-                weights_tsr.view(),
-                bra,
-                out.view_mut(),
-                nchunk,
-            )?;
-            Ok(out)
-        } else {
-            unimplemented!("UKS fxc_pot_with_eff_bra_trans is not yet implemented")
+        match spin {
+            NISpin::Unpolarized => {
+                let nset = rho1.shape()[2];
+                let nocc = bra.shape()[1];
+                let mut out = rt::zeros(([nao, nocc, nset], &device));
+                rks_fxc_pot_with_eff_bra_trans_with_output(
+                    den_type,
+                    fxc_eff,
+                    rho1,
+                    ao,
+                    weights_tsr.view(),
+                    bra,
+                    out.view_mut(),
+                    nchunk,
+                )?;
+                Ok(out)
+            },
+            NISpin::Polarized => unimplemented!("UKS with bra transformation is not yet implemented"),
         }
     }
 
@@ -389,7 +412,7 @@ impl<'a> NIMatmul<'a> {
         rho1: TsrView,
         rho2: TsrView,
         den_type: NIDenType,
-        spin: usize,
+        spin: NISpin,
     ) -> Result<Tsr, NIError> {
         let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
@@ -398,36 +421,39 @@ impl<'a> NIMatmul<'a> {
         let device = ao.device().clone();
         let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
 
-        if spin == 0 {
-            let nset1 = rho1.shape()[2];
-            let nset2 = rho2.shape()[2];
-            let mut out = rt::zeros(([nao, nao, nset1, nset2], &device));
-            rks_kxc_pot_with_eff_with_output(
-                den_type,
-                kxc_eff,
-                rho1,
-                rho2,
-                ao,
-                weights_tsr.view(),
-                out.view_mut(),
-                nchunk,
-            )?;
-            Ok(out)
-        } else {
-            let nset1 = rho1.shape()[3];
-            let nset2 = rho2.shape()[3];
-            let mut out = rt::zeros(([nao, nao, 2, nset1, nset2], &device));
-            uks_kxc_pot_with_eff_with_output(
-                den_type,
-                kxc_eff,
-                rho1,
-                rho2,
-                ao,
-                weights_tsr.view(),
-                out.view_mut(),
-                nchunk,
-            )?;
-            Ok(out)
+        match spin {
+            NISpin::Unpolarized => {
+                let nset1 = rho1.shape()[2];
+                let nset2 = rho2.shape()[2];
+                let mut out = rt::zeros(([nao, nao, nset1, nset2], &device));
+                rks_kxc_pot_with_eff_with_output(
+                    den_type,
+                    kxc_eff,
+                    rho1,
+                    rho2,
+                    ao,
+                    weights_tsr.view(),
+                    out.view_mut(),
+                    nchunk,
+                )?;
+                Ok(out)
+            },
+            NISpin::Polarized => {
+                let nset1 = rho1.shape()[3];
+                let nset2 = rho2.shape()[3];
+                let mut out = rt::zeros(([nao, nao, 2, nset1, nset2], &device));
+                uks_kxc_pot_with_eff_with_output(
+                    den_type,
+                    kxc_eff,
+                    rho1,
+                    rho2,
+                    ao,
+                    weights_tsr.view(),
+                    out.view_mut(),
+                    nchunk,
+                )?;
+                Ok(out)
+            },
         }
     }
 }

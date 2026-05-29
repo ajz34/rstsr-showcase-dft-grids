@@ -48,7 +48,7 @@ pub fn compute_rks_vxc_from_dm_naive(
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.i((.., .., 0)), 1, true)?.try_into().unwrap();
         nelec += (&weights * rho.i((.., 0, 0))).sum();
         exc += (exc_eff * &weights * rho.i((.., 0, 0))).sum();
-        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 0)?;
+        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, NISpin::Unpolarized)?;
         vxc += vxc_batch;
     }
 
@@ -102,7 +102,7 @@ pub fn compute_rks_vxc_from_homogenous_bra_naive(
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.i((.., .., 0)), 1, true)?.try_into().unwrap();
         nelec += (&weights * rho.i((.., 0, 0))).sum();
         exc += (exc_eff * &weights * rho.i((.., 0, 0))).sum();
-        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 0)?;
+        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, NISpin::Unpolarized)?;
         vxc += vxc_batch;
     }
 
@@ -155,7 +155,7 @@ pub fn compute_rks_fxc_from_dm_naive(
         let rho1 = ni_cur.make_rho_from_dm(dm1_list, den_type)?;
         let xc_eff = libxc_eval_eff(xc_func, rho0.i((.., .., 0)), 2, true)?;
         let fxc_eff = &xc_eff[2];
-        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, 0)?;
+        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, NISpin::Unpolarized)?;
         fxc += fxc_batch;
     }
 
@@ -217,7 +217,7 @@ pub fn compute_rks_fxc_from_braket_naive(
         let rho1 = ni_cur.make_rho_from_one_bra_mult_ket(bra1.view(), ket1_list, den_type)?;
         let xc_eff = libxc_eval_eff(xc_func, rho0.i((.., .., 0)), 2, true)?;
         let fxc_eff = &xc_eff[2];
-        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, 0)?;
+        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, NISpin::Unpolarized)?;
         fxc += fxc_batch;
     }
     Ok(fxc)
@@ -268,7 +268,7 @@ pub fn compute_uks_vxc_from_dm_naive(
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.view(), 1, true)?.try_into().unwrap();
         nelec += (&weights * &rho_spin_sum).sum();
         exc += (exc_eff * &weights * &rho_spin_sum).sum();
-        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 1)?;
+        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, NISpin::Unpolarized)?;
         vxc += vxc_batch;
     }
 
@@ -324,7 +324,7 @@ pub fn compute_uks_vxc_from_homogenous_bra_naive(
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.view(), 1, true)?.try_into().unwrap();
         nelec += (&weights * &rho_spin_sum).sum();
         exc += (exc_eff * &weights * &rho_spin_sum).sum();
-        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 1)?;
+        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, NISpin::Unpolarized)?;
         vxc += vxc_batch;
     }
 
@@ -386,7 +386,7 @@ pub fn compute_uks_fxc_from_dm_naive(
 
         let xc_eff = libxc_eval_eff(xc_func, rho0.view(), 2, true)?;
         let fxc_eff = &xc_eff[2];
-        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, 1)?;
+        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, NISpin::Unpolarized)?;
         fxc += fxc_batch;
     }
     Ok(fxc)
@@ -465,7 +465,7 @@ pub fn compute_uks_fxc_from_braket_naive(
 
         let xc_eff = libxc_eval_eff(xc_func, rho0.view(), 2, true)?;
         let fxc_eff = &xc_eff[2];
-        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, 1)?;
+        let fxc_batch = ni_cur.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), den_type, NISpin::Unpolarized)?;
         fxc += fxc_batch;
     }
     Ok(fxc)

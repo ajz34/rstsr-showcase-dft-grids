@@ -67,9 +67,10 @@ mod test_xcpot {
         let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
         let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
         let exc = (exc_eff * rho0.i((.., 0)) * &h2o.weights).sum();
-        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), RHO, 0).unwrap();
-        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), RHO, 0).unwrap();
-        let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), RHO, 0).unwrap();
+        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), RHO, NISpin::Unpolarized).unwrap();
+        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), RHO, NISpin::Unpolarized).unwrap();
+        let kxc =
+            ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), RHO, NISpin::Unpolarized).unwrap();
         assert!((exc - -8.1384975323).abs() < 1e-6);
         fp_assert_eq!(vxc.view(), -27.2331156537, 1e-6);
         fp_assert_eq!(fxc.view(), -0.09693300035135462, 1e-6);
@@ -89,9 +90,10 @@ mod test_xcpot {
         let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
         let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
         let exc = (exc_eff * rho0.i((.., 0)) * &h2o.weights).sum();
-        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), SIGMA, 0).unwrap();
-        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), SIGMA, 0).unwrap();
-        let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), SIGMA, 0).unwrap();
+        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), SIGMA, NISpin::Unpolarized).unwrap();
+        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), SIGMA, NISpin::Unpolarized).unwrap();
+        let kxc =
+            ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), SIGMA, NISpin::Unpolarized).unwrap();
         assert!((exc - -8.9542650216).abs() < 1e-6);
         fp_assert_eq!(vxc.view(), -28.6270372279, 1e-6);
         fp_assert_eq!(fxc.view(), -0.10389233031803395, 1e-6);
@@ -111,9 +113,10 @@ mod test_xcpot {
         let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
         let [exc_eff, vxc_eff, fxc_eff, kxc_eff] = xc_eff.try_into().unwrap();
         let exc = (exc_eff * rho0.i((.., 0)) * &h2o.weights).sum();
-        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), TAU, 0).unwrap();
-        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, 0).unwrap();
-        let kxc = ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), TAU, 0).unwrap();
+        let vxc = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), TAU, NISpin::Unpolarized).unwrap();
+        let fxc = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, NISpin::Unpolarized).unwrap();
+        let kxc =
+            ni_obj.make_kxc_pot_with_eff(kxc_eff.view(), rho1.view(), rho2.view(), TAU, NISpin::Unpolarized).unwrap();
         assert!((exc - -8.4667246286).abs() < 1e-6);
         fp_assert_eq!(vxc.view(), -26.3517912584, 1e-6);
         fp_assert_eq!(fxc.view(), -0.09110536214579629, 1e-6);
@@ -136,7 +139,7 @@ mod test_xcpot {
         let occ_coeff = mo_coeff_arr.bool_select(1, &occ_mask);
 
         // reference: fxc_bra_trans = occ_coeff.T @ fxc
-        let fxc = ni_obj.make_fxc_pot_with_eff(xc_eff[2].view(), rho1.view(), TAU, 0).unwrap();
+        let fxc = ni_obj.make_fxc_pot_with_eff(xc_eff[2].view(), rho1.view(), TAU, NISpin::Unpolarized).unwrap();
         let nset = fxc.shape()[2];
         let nao = fxc.shape()[0];
         let nocc = occ_coeff.shape()[1];
@@ -148,8 +151,9 @@ mod test_xcpot {
         fp_assert_eq!(fxc_bra_trans_ref.view(), 0.11104650048770713, 1e-6);
 
         // test of current implementation
-        let fxc_bra_trans =
-            ni_obj.make_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU, 0).unwrap();
+        let fxc_bra_trans = ni_obj
+            .make_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU, NISpin::Unpolarized)
+            .unwrap();
         fp_assert_eq!(fxc_bra_trans.view(), 0.11104650048770713, 1e-6);
     }
 }
