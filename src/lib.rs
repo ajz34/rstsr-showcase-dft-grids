@@ -16,6 +16,7 @@ pub mod prelude {
     pub use flags::*;
     pub use numint_matmul::nimatmul::*;
     pub use xceff::libxc_wrap::*;
+    pub use xcpot_dm_naive::*;
 
     pub(crate) use NIDenType::*;
 

@@ -35,7 +35,6 @@ use std::time::Instant;
 use util::*;
 
 use LibXCSpin::*;
-use NIDenType::*;
 
 type Tsr<T = f64> = Tensor<T, DeviceFaer, IxD>;
 
@@ -147,8 +146,6 @@ static PERTURBED_DM: LazyLock<PenPerturbedDM> = LazyLock::new(|| PenPerturbedDM:
 // Benchmarks (single-run, manual timing)
 // ---------------------------------------------------------------------------
 
-const GRID_BATCH: usize = 384 * 64;
-
 fn bench_batched_vxc(pen: &PenMolecule) {
     let coords = pen.coords.to_owned().into_pack_array::<3>(0).into_vec();
     let weights = pen.weights.to_owned().into_vec();
@@ -158,27 +155,11 @@ fn bench_batched_vxc(pen: &PenMolecule) {
     let occ_mask = mo_occ.view().greater(0.0).into_vec();
     let occ = mo_occ.bool_select(0, &occ_mask);
     let bra = mo_coeff.bool_select(1, &occ_mask) * occ.sqrt().i((None, ..));
-    let nao = pen.mo_coeff.shape()[0];
-    let device = pen.coords.device().clone();
 
     let time = Instant::now();
-    let mut exc = 0.0;
-    let mut vxc: Tsr = rt::zeros(([nao, nao], &device));
-    for start in (0..pen.ngrids).step_by(GRID_BATCH) {
-        let stop = (start + GRID_BATCH).min(pen.ngrids);
-        let coords = &coords[start..stop];
-        let weights = &weights[start..stop];
-        let mut ni_obj = NIMatmul::new(pen.cint(), coords, weights);
-
-        let weights = rt::asarray((weights, &device));
-        let rho0 = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], TAU).unwrap();
-        let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
-        let [exc_eff, vxc_eff] = libxc_eval_eff(&xc_func, rho0.i((.., .., 0)), 1, true).unwrap().try_into().unwrap();
-        let exc_batch = (exc_eff * weights * rho0.i((.., 0))).sum();
-        exc += exc_batch;
-        let vxc_batch = ni_obj.make_vxc_pot_with_eff(vxc_eff.view(), TAU, 0).unwrap();
-        vxc += vxc_batch;
-    }
+    let ni_obj = NIMatmul::new(pen.cint(), &coords, &weights);
+    let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
+    let (_nelec, exc, vxc) = compute_rks_vxc_from_homogenous_bra_naive(&ni_obj, &xc_func, bra.view()).unwrap();
     let elapsed = time.elapsed().as_secs_f64();
 
     // Verification
@@ -194,30 +175,14 @@ fn bench_batched_fxc(pen: &PenMolecule) {
     let coords = pen.coords.to_owned().into_pack_array::<3>(0).into_vec();
     let weights = pen.weights.to_owned().into_vec();
 
-    let mo_coeff = pen.mo_coeff.to_owned().into_contig(ColMajor);
-    let mo_occ = pen.mo_occ.view();
-    let occ_mask = mo_occ.view().greater(0.0).into_vec();
-    let occ = mo_occ.bool_select(0, &occ_mask);
-    let bra = mo_coeff.bool_select(1, &occ_mask) * occ.sqrt().i((None, ..));
+    let dm0 = pen.rdm1.view();
     let dm1 = PERTURBED_DM.dm1_flat.view();
     let dm1_list = dm1.axes_iter(-1).collect_vec();
-    let device = pen.coords.device().clone();
 
     let time = Instant::now();
-    let mut fxc: Tsr = rt::zeros((dm1.shape().to_vec(), &device));
-    for start in (0..pen.ngrids).step_by(GRID_BATCH) {
-        let stop = (start + GRID_BATCH).min(pen.ngrids);
-        let coords = &coords[start..stop];
-        let weights = &weights[start..stop];
-        let mut ni_obj = NIMatmul::new(pen.cint(), coords, weights);
-
-        let rho0 = ni_obj.make_rho_from_homogeneous_braket(&[bra.view()], TAU).unwrap();
-        let rho1 = ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap();
-        let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
-        let [_, _, fxc_eff] = libxc_eval_eff(&xc_func, rho0.i((.., .., 0)), 2, true).unwrap().try_into().unwrap();
-        let fxc_batch = ni_obj.make_fxc_pot_with_eff(fxc_eff.view(), rho1.view(), TAU, 0).unwrap();
-        fxc += fxc_batch;
-    }
+    let ni_obj = NIMatmul::new(pen.cint(), &coords, &weights);
+    let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Unpolarized);
+    let fxc = compute_rks_fxc_from_dm_naive(&ni_obj, &xc_func, dm0, &dm1_list).unwrap();
     let elapsed = time.elapsed().as_secs_f64();
 
     // Verification

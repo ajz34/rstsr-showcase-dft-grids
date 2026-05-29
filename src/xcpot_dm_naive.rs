@@ -14,7 +14,7 @@ use LibXCSpin::*;
 /// - `ni_obj`: The NIMatmul object containing the grid and integral information.
 /// - `xc_func`: The LibXC functional to evaluate.
 /// - `dm0`: The density matrix, shape `[nao, nao]`.
-pub fn make_rks_vxc_from_dm_naive(
+pub fn compute_rks_vxc_from_dm_naive(
     ni_obj: &NIMatmul,
     xc_func: &LibXCFunctional,
     dm0: TsrView,
@@ -69,7 +69,7 @@ pub fn make_rks_vxc_from_dm_naive(
 ///   orbitals. Note we do not have distinguish `mo_coeff` and `mo_occ`, so usually `bra` is
 ///   constructed by `mo_coeff * sqrt(mo_occ)`. This also requires occupation number to be
 ///   non-negative.
-pub fn make_rks_vxc_from_homogenous_bra_naive(
+pub fn compute_rks_vxc_from_homogenous_bra_naive(
     ni_obj: &NIMatmul,
     xc_func: &LibXCFunctional,
     bra: TsrView,
@@ -119,7 +119,7 @@ pub fn make_rks_vxc_from_homogenous_bra_naive(
 /// - `xc_func`: The LibXC functional to evaluate.
 /// - `dm0`: The density matrix (usually SCF density), shape `[nao, nao]`.
 /// - `dm1`: The perturbed density matrix (usually from response), each of shape `[nao, nao]`.
-pub fn make_rks_fxc_from_dm_naive(
+pub fn compute_rks_fxc_from_dm_naive(
     ni_obj: &NIMatmul,
     xc_func: &LibXCFunctional,
     dm0: TsrView,
@@ -178,7 +178,7 @@ pub fn make_rks_fxc_from_dm_naive(
 ///   the number of occupied orbitals in bra1. For perturbed density, `bra1` is usually the original
 ///   occupied orbitals (not the ), we usually have `nocc1 == nocc`, but we do not strictly require
 ///   it here.
-pub fn make_rks_fxc_from_braket_naive(
+pub fn compute_rks_fxc_from_braket_naive(
     ni_obj: &NIMatmul,
     xc_func: &LibXCFunctional,
     bra0: TsrView,
@@ -221,4 +221,55 @@ pub fn make_rks_fxc_from_braket_naive(
         fxc += fxc_batch;
     }
     Ok(fxc)
+}
+
+/// Reference implementation that covers `dft.numint.nr_uks` usage.
+///
+/// Make sure input density matrix is symmetrized.
+///
+/// # Parameters
+///
+/// - `ni_obj`: The NIMatmul object containing the grid and integral information.
+/// - `xc_func`: The LibXC functional to evaluate.
+/// - `dm0`: The density matrix, shape `[nao, nao, 2]`.
+pub fn compute_uks_vxc_from_dm_naive(
+    ni_obj: &NIMatmul,
+    xc_func: &LibXCFunctional,
+    dm0: TsrView,
+) -> Result<(f64, f64, Tsr), NIError> {
+    let device = dm0.device().clone();
+    let den_type = determine_den_type(xc_func)?;
+    if xc_func.spin() != Polarized {
+        return Err(ni_error!("Only polarized functionals are supported in this function"));
+    }
+    let ngrids = ni_obj.weights.len();
+    ni_check_shape!(dm0.ndim(), 3, "dm0 must be 3-dim for polarized case")?;
+    let nao = dm0.shape()[0];
+    ni_check_shape!(dm0.shape(), [nao, nao, 2], "dm0 must have shape (nao, nao, 2) for polarized case")?;
+
+    let nbatch = ni_obj.nbatch;
+
+    let mut nelec = 0.0;
+    let mut exc = 0.0;
+    let mut vxc = rt::zeros(([nao, nao, 2], &device));
+
+    for start in (0..ngrids).step_by(nbatch) {
+        let stop = (start + nbatch).min(ngrids);
+        let coords = &ni_obj.coords[start..stop];
+        let weights = &ni_obj.weights[start..stop];
+        // create a new NIMatmul object for the current batch of grid points
+        let mut ni_cur = NIMatmul::new(&ni_obj.cint, coords, weights);
+        ni_cur.nchunk = ni_obj.nchunk;
+
+        let weights = rt::asarray((weights, &device));
+        let rho = ni_cur.make_rho_from_dm(&[dm0.view()], den_type)?;
+        let rho_spin_sum = rho.i((.., .., 0)) + rho.i((.., .., 1));
+        let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.view(), 1, true)?.try_into().unwrap();
+        nelec += (&weights * &rho_spin_sum).sum() + (&weights * &rho_spin_sum).sum();
+        exc += (exc_eff * &weights * &rho_spin_sum).sum();
+        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 0)?;
+        vxc += vxc_batch;
+    }
+
+    Ok((nelec, exc, vxc))
 }
