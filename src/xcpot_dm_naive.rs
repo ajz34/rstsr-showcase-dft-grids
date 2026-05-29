@@ -246,6 +246,7 @@ pub fn compute_uks_vxc_from_dm_naive(
     ni_check_shape!(dm0.ndim(), 3, "dm0 must be 3-dim for polarized case")?;
     let nao = dm0.shape()[0];
     ni_check_shape!(dm0.shape(), [nao, nao, 2], "dm0 must have shape (nao, nao, 2) for polarized case")?;
+    let dm0_list = dm0.axes_iter(-1).collect_vec();
 
     let nbatch = ni_obj.nbatch;
 
@@ -262,12 +263,12 @@ pub fn compute_uks_vxc_from_dm_naive(
         ni_cur.nchunk = ni_obj.nchunk;
 
         let weights = rt::asarray((weights, &device));
-        let rho = ni_cur.make_rho_from_dm(&[dm0.view()], den_type)?;
+        let rho = ni_cur.make_rho_from_dm(&dm0_list, den_type)?;
         let rho_spin_sum = rho.i((.., .., 0)) + rho.i((.., .., 1));
         let [exc_eff, vxc_eff] = libxc_eval_eff(xc_func, rho.view(), 1, true)?.try_into().unwrap();
-        nelec += (&weights * &rho_spin_sum).sum() + (&weights * &rho_spin_sum).sum();
+        nelec += (&weights * &rho_spin_sum).sum();
         exc += (exc_eff * &weights * &rho_spin_sum).sum();
-        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 0)?;
+        let vxc_batch = ni_cur.make_vxc_pot_with_eff(vxc_eff.view(), den_type, 1)?;
         vxc += vxc_batch;
     }
 

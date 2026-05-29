@@ -138,6 +138,21 @@ mod test_xcpot {
     }
 }
 
+mod test_xcpot_from_dm_naive {
+    use super::*;
+
+    #[rstest]
+    fn test_rho(ch2: &Ch2Molecule, perturbed_dm: &Ch2PerturbedDM) {
+        let ni_obj = ch2.build_ni_obj();
+        let dm0 = ch2.rdm1.view();
+        let xc_func = LibXCFunctional::from_identifier("LDA_X", Polarized);
+        let (nelec, exc, vxc) = compute_uks_vxc_from_dm_naive(&ni_obj, &xc_func, dm0.view()).unwrap();
+        assert!((nelec - 6.0).abs() < 1e-5);
+        assert!((exc - -4.7040426008).abs() < 1e-6);
+        fp_assert_eq!(vxc.view(), -12.7427734694, 1e-6);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // TestXCPotPure — naive vs optimized pure function comparison (UKS)
 // ---------------------------------------------------------------------------
