@@ -151,9 +151,8 @@ mod test_xcpot {
         fp_assert_eq!(fxc_bra_trans_ref.view(), 0.11104650048770713, 1e-6);
 
         // test of current implementation
-        let fxc_bra_trans = ni_obj
-            .make_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU, NISpin::Unpolarized)
-            .unwrap();
+        let fxc_bra_trans =
+            ni_obj.make_rks_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), occ_coeff.view(), TAU).unwrap();
         fp_assert_eq!(fxc_bra_trans.view(), 0.11104650048770713, 1e-6);
     }
 }

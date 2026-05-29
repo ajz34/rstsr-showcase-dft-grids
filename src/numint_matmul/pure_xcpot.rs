@@ -366,8 +366,8 @@ fn contract_ao_wv_bra(
 
 /// Evaluate XC potential (2nd order, RKS) with fxc_eff, bra transformed (parallel enhanced).
 ///
-/// Bra is usually the occupied orbital coefficient (row-major applied to $\mu$),
-/// which can lower the computational cost.
+/// Bra is usually the occupied orbital coefficient (row-major applied to $\mu$, col-major applied
+/// to $\nu$), which can lower the computational cost.
 ///
 /// # Parameters
 ///
@@ -413,8 +413,7 @@ pub fn rks_fxc_pot_with_eff_bra_trans_with_output(
     // Pre-compute ao_bra: [ngrids, nocc, ncomp]
     let device = ao.device().clone();
     let ncomp = den_type.num_ao_comp();
-    let ao_bra_data = vec![0.0; ngrids * nocc * ncomp];
-    let mut ao_bra = rt::asarray((ao_bra_data, [ngrids, nocc, ncomp], &device));
+    let mut ao_bra = rt::zeros(([ngrids, nocc, ncomp], &device));
     for c in 0..ncomp {
         ao_bra.i_mut((.., .., c)).matmul_from(ao.i((.., .., c)), &bra, 1.0, 0.0);
     }
@@ -922,5 +921,135 @@ pub fn uks_kxc_pot_with_eff_with_output(
             }
         }
     }
+    Ok(())
+}
+
+/// Evaluate XC potential (2nd order, UKS) with fxc_eff, bra transformed (parallel enhanced).
+///
+/// Bra is usually the occupied orbital coefficient (row-major applied to $\mu$, col-major applied
+/// to $\nu$), which can lower the computational cost.
+///
+/// # Parameters
+///
+/// - `den_type`: the type of density to compute. Can be `RHO`, `SIGMA`, `TAU`.
+/// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, 2, nvar, 2]`
+/// - `rho1` : first-order density response, shape `[ngrids, nvar, 2, nset]`
+/// - `ao` : AO values and derivatives, shape `[ngrids, nao, ncomp]`
+/// - `weights` : grid weights, shape `[ngrids]`
+/// - `bra` : bra orbital coefficients, first shape `[nao, nocc_alpha]`, second shape `[nao,
+///   nocc_beta]`
+/// - `fxc` : output fxc (bra transformed), first shape `[nao, nocc_alpha, nset]`, second shape
+///   `[nao, nocc_beta, nset]`
+/// - `nchunk` : number of grid points to process in one chunk
+#[allow(clippy::too_many_arguments)]
+pub fn uks_fxc_pot_with_eff_bra_trans_with_output(
+    den_type: NIDenType,
+    fxc_eff: TsrView,
+    rho1: TsrView,
+    ao: TsrView,
+    weights: TsrView,
+    bra: &[TsrView; 2],
+    fxc: &mut [TsrMut; 2],
+    nchunk: usize,
+) -> Result<(), NIError> {
+    ni_check_shape!(rho1.ndim(), 4, "rho1 tensor must be 4-dim")?;
+    let nset = rho1.shape()[3];
+    let nvar = rho1.shape()[1];
+    let ngrids = rho1.shape()[0];
+    ni_check_shape!(rho1.shape()[2], 2, "rho1 must have 2 spin channels")?;
+    ni_check_shape!(fxc_eff.shape(), [ngrids, nvar, 2, nvar, 2], "fxc_eff shape mismatch")?;
+    ni_check_shape!(weights.shape(), [ngrids], "Weights shape mismatch")?;
+    ni_check_shape!(den_type.num_nvar(), nvar, "Dimension mismatch for input density type")?;
+    ni_check_shape!(ao.ndim(), 3, "AO tensor must be 3-dim")?;
+    ni_check_shape!(ao.shape()[0], ngrids, "AO grids dimension mismatch")?;
+    ni_check_shape!(ao.shape()[2] >= den_type.num_ao_comp(), "AO component dimension insufficient")?;
+    let nao = ao.shape()[1];
+    for bra_spin in bra.iter() {
+        ni_check_shape!(bra_spin.ndim(), 2, "bra tensors must be 2-dim")?;
+        ni_check_shape!(bra_spin.shape()[0], nao, "bra first dimension must match nao")?;
+    }
+    let nocc_alpha = bra[0].shape()[1];
+    let nocc_beta = bra[1].shape()[1];
+    let nocc_max = nocc_alpha.max(nocc_beta);
+    ni_check_shape!(fxc[0].shape(), [nao, nocc_alpha, nset], "Output shape mismatch")?;
+    ni_check_shape!(fxc[1].shape(), [nao, nocc_beta, nset], "Output shape mismatch")?;
+
+    if den_type == LAPL {
+        return Err(ni_error!("Contracting AO with LAPL density type is not supported"));
+    }
+
+    // Pre-compute ao_bra: [ngrids, nocc, 2, ncomp]
+    let device = ao.device().clone();
+    let ncomp = den_type.num_ao_comp();
+    let mut ao_bra_alpha = rt::zeros(([ngrids, nocc_alpha, ncomp], &device));
+    let mut ao_bra_beta = rt::zeros(([ngrids, nocc_beta, ncomp], &device));
+    for c in 0..ncomp {
+        ao_bra_alpha.i_mut((.., .., c)).matmul_from(ao.i((.., .., c)), &bra[0], 1.0, 0.0);
+        ao_bra_beta.i_mut((.., .., c)).matmul_from(ao.i((.., .., c)), &bra[1], 1.0, 0.0);
+    }
+
+    // fxc_eff contraction
+    let fxc_eff_weighted = &weights * &fxc_eff;
+
+    // buffer pool initialization
+    // Each BufferPool lazily creates per-thread buffers; peak usage = nthreads * sum of init sizes f64
+    let buffer_init = || vec![0.0; nchunk * nao];
+    let buffer_pool = BufferPool::new(buffer_init);
+    let fxc_init = || vec![0.0; nao * nocc_max];
+    let fxc_pool = BufferPool::new(fxc_init);
+
+    // task numbers
+    let ntask_grid = ngrids.div_ceil(nchunk);
+    let ntask_i = 2 * nset;
+    let ntask = ntask_grid * ntask_i;
+
+    // atomic guard to avoid racing write
+    let guard = (0..ntask_i).map(|_| Mutex::new(())).collect_vec();
+
+    (0..ntask).into_par_iter().try_for_each(|itask| {
+        // determine task configuration
+        let j = itask % ntask_i;
+        let s = j % 2;
+        let i = j / 2;
+        let igrid = itask / ntask_i;
+
+        // determine the grid chunk for this task
+        let start = igrid * nchunk;
+        let end = ((igrid + 1) * nchunk).min(ngrids);
+
+        // get buffer from pool
+        let nocc = if s == 0 { nocc_alpha } else { nocc_beta };
+        let mut buf = buffer_pool.get();
+        let mut fxc_buf = fxc_pool.get();
+        let mut fxc_local = rt::asarray((&mut fxc_buf, [nao, nocc], ao.device()));
+
+        // perform actual evaluation
+        let rho1_chunk = rho1.i((start..end, .., .., None, i));
+        let fxc_eff_weighted_chunk = fxc_eff_weighted.i(start..end);
+        // Contract over the inner spin+var pair (axes 1 and 2)
+        let fxc_contracted_chunk = (&fxc_eff_weighted_chunk.i((.., .., .., .., s)) * rho1_chunk).sum_axes([1, 2]);
+        let ao_chunk = ao.i(start..end);
+        let ao_bra_chunk = if s == 0 { ao_bra_alpha.i(start..end) } else { ao_bra_beta.i(start..end) };
+        contract_ao_wv_bra(
+            den_type,
+            fxc_contracted_chunk.view(),
+            ao_chunk.view(),
+            ao_bra_chunk.view(),
+            fxc_local.view_mut(),
+            &mut buf,
+        )?;
+
+        // write back with lock
+        let lock = guard[j].lock().unwrap();
+        let mut fxc_spin = unsafe { fxc[s].force_mut() };
+        *&mut fxc_spin.i_mut((.., .., i)) += &fxc_local;
+        drop(lock);
+
+        // return buffer to pool
+        buffer_pool.put(buf);
+        fxc_pool.put(fxc_buf);
+        Ok(())
+    })?;
+
     Ok(())
 }

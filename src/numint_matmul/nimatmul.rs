@@ -246,7 +246,7 @@ impl<'a> NIMatmul<'a> {
     /// - `vxc_eff` : effective XC potential, shape `[ngrids, nvar]` for RKS, `[ngrids, nvar, 2]`
     ///   for UKS
     /// - `den_type` : which density components to compute
-    /// - `spin` : 0 for RKS, 1 for UKS
+    /// - `spin` : spin polarization or not
     ///
     /// # Returns
     ///
@@ -287,7 +287,7 @@ impl<'a> NIMatmul<'a> {
     /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]` for RKS, `[ngrids,
     ///   nvar, 2, nset]` for UKS
     /// - `den_type` : which density components to compute
-    /// - `spin` : 0 for RKS, 1 for UKS
+    /// - `spin` : spin polarization or not
     ///
     /// # Returns
     ///
@@ -340,6 +340,8 @@ impl<'a> NIMatmul<'a> {
 
     /// Evaluates XC potential (2nd order) with fxc_eff, applying bra transformation.
     ///
+    /// This function only works for RKS (spin-unpolarized case).
+    ///
     /// Bra is usually the occupied orbital coefficient, which can lower the computational cost.
     ///
     /// # Parameters
@@ -348,18 +350,16 @@ impl<'a> NIMatmul<'a> {
     /// - `rho1` : first-order density response, shape `[ngrids, nvar, nset]`
     /// - `bra` : bra orbital coefficients, shape `[nao, nocc]`
     /// - `den_type` : which density components to compute
-    /// - `spin` : 0 for RKS (UKS not yet implemented)
     ///
     /// # Returns
     ///
     /// Bra-transformed XC potential, shape `[nao, nocc, nset]`.
-    pub fn make_fxc_pot_with_eff_bra_trans(
+    pub fn make_rks_fxc_pot_with_eff_bra_trans(
         &mut self,
         fxc_eff: TsrView,
         rho1: TsrView,
         bra: TsrView,
         den_type: NIDenType,
-        spin: NISpin,
     ) -> Result<Tsr, NIError> {
         let nchunk = self.nchunk;
         let weights_data = self.weights.clone();
@@ -368,25 +368,65 @@ impl<'a> NIMatmul<'a> {
         let device = ao.device().clone();
         let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
 
-        match spin {
-            NISpin::Unpolarized => {
-                let nset = rho1.shape()[2];
-                let nocc = bra.shape()[1];
-                let mut out = rt::zeros(([nao, nocc, nset], &device));
-                rks_fxc_pot_with_eff_bra_trans_with_output(
-                    den_type,
-                    fxc_eff,
-                    rho1,
-                    ao,
-                    weights_tsr.view(),
-                    bra,
-                    out.view_mut(),
-                    nchunk,
-                )?;
-                Ok(out)
-            },
-            NISpin::Polarized => unimplemented!("UKS with bra transformation is not yet implemented"),
-        }
+        let nset = rho1.shape()[2];
+        let nocc = bra.shape()[1];
+        let mut out = rt::zeros(([nao, nocc, nset], &device));
+        rks_fxc_pot_with_eff_bra_trans_with_output(
+            den_type,
+            fxc_eff,
+            rho1,
+            ao,
+            weights_tsr.view(),
+            bra,
+            out.view_mut(),
+            nchunk,
+        )?;
+        Ok(out)
+    }
+
+    /// Evaluates XC potential (2nd order) with fxc_eff, applying bra transformation.
+    ///
+    /// This function only works for UKS (spin-polarized case).
+    ///
+    /// Bra is usually the occupied orbital coefficient, which can lower the computational cost.
+    ///
+    /// # Parameters
+    ///
+    /// - `fxc_eff` : effective XC kernel, shape `[ngrids, nvar, 2, nvar, 2]`
+    /// - `rho1` : first-order density response, shape `[ngrids, nvar, 2, nset]`
+    /// - `bra` : bra orbital coefficients, first shape `[nao, nocc_alpha]`, second shape `[nao,
+    ///   nocc_beta]`
+    /// - `den_type` : which density components to compute
+    pub fn make_uks_fxc_pot_with_eff_bra_trans(
+        &mut self,
+        fxc_eff: TsrView,
+        rho1: TsrView,
+        bra: &[TsrView; 2],
+        den_type: NIDenType,
+    ) -> Result<[Tsr; 2], NIError> {
+        let nchunk = self.nchunk;
+        let weights_data = self.weights.clone();
+        let ao = self.get_cached_ao(den_type.num_ao_deriv());
+        let nao = ao.shape()[1];
+        let device = ao.device().clone();
+        let weights_tsr = rt::asarray((weights_data.clone(), [weights_data.len()], &device));
+
+        let nset = rho1.shape()[3];
+        let nocc_alpha = bra[0].shape()[1];
+        let nocc_beta = bra[1].shape()[1];
+        let mut out_alpha = rt::zeros(([nao, nocc_alpha, nset], &device));
+        let mut out_beta = rt::zeros(([nao, nocc_beta, nset], &device));
+        uks_fxc_pot_with_eff_bra_trans_with_output(
+            den_type,
+            fxc_eff,
+            rho1,
+            ao,
+            weights_tsr.view(),
+            bra,
+            &mut [out_alpha.view_mut(), out_beta.view_mut()],
+            nchunk,
+        )?;
+        Ok([out_alpha, out_beta])
     }
 
     /// Evaluates XC potential (3rd order) with kxc_eff.
@@ -400,7 +440,7 @@ impl<'a> NIMatmul<'a> {
     /// - `rho2` : second-order density response, shape `[ngrids, nvar, nset2]` for RKS, `[ngrids,
     ///   nvar, 2, nset2]` for UKS
     /// - `den_type` : which density components to compute
-    /// - `spin` : 0 for RKS, 1 for UKS
+    /// - `spin` : spin polarization or not
     ///
     /// # Returns
     ///

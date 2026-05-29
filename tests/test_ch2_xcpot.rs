@@ -140,6 +140,52 @@ mod test_xcpot {
         fp_assert_eq!(fxc.view(), 31.692895267010428, 1e-5);
         fp_assert_eq!(kxc.view(), 6528.81912736829, 1e-4);
     }
+
+    #[rstest]
+    fn test_tau_bra_trans(ch2: &Ch2Molecule, perturbed_dm: &Ch2PerturbedDM) {
+        let mut ni_obj = ch2.build_ni_obj();
+        let rho0 = ni_obj.make_rho_from_dm(&dm0_list(ch2), TAU).unwrap();
+        let dm1_list: Vec<_> = perturbed_dm.dm1_flat.axes_iter(-1).collect();
+        let rho1: Tsr =
+            ni_obj.make_rho_from_dm(&dm1_list, TAU).unwrap().into_shape([ch2.ngrids, 5, 2, perturbed_dm.ncomp1]);
+
+        let xc_func = LibXCFunctional::from_identifier("HYB_MGGA_XC_TPSSH", Polarized);
+        let xc_eff = libxc_eval_eff(&xc_func, rho0.view(), 3, true).unwrap();
+
+        // unscaled occ_coeff: mo_coeff columns where mo_occ > 0
+        let mo_coeff = ch2.mo_coeff.to_owned();
+        let bra = [0, 1]
+            .iter()
+            .map(|&spin| {
+                let occ_mask = ch2.mo_occ.i(spin).greater(0.0).into_vec();
+                mo_coeff.i(spin).bool_select(1, &occ_mask)
+            })
+            .collect_vec();
+
+        // reference: fxc_bra_trans = occ_coeff.T @ fxc
+        let fxc = ni_obj.make_fxc_pot_with_eff(xc_eff[2].view(), rho1.view(), TAU, NISpin::Polarized).unwrap();
+        let nset = fxc.shape()[3];
+        let nao = fxc.shape()[0];
+        let [nocc_alpha, nocc_beta] = [bra[0].shape()[1], bra[1].shape()[1]];
+        let device = fxc.device().clone();
+        let mut fxc_bra_trans_ref: [Tsr; 2] =
+            [rt::zeros(([nao, nocc_alpha, nset], &device)), rt::zeros(([nao, nocc_beta, nset], &device))];
+        for i in 0..nset {
+            for s in 0..2 {
+                fxc_bra_trans_ref[s].i_mut((.., .., i)).matmul_from(fxc.i((.., .., s, i)), &bra[s], 1.0, 0.0);
+            }
+        }
+        println!("fp fxc: {:?}", fp(fxc_bra_trans_ref[0].view()));
+        println!("fp fxc: {:?}", fp(fxc_bra_trans_ref[1].view()));
+
+        // test of current implementation
+        let bra_view = [bra[0].view(), bra[1].view()];
+        let fxc_bra_trans =
+            ni_obj.make_uks_fxc_pot_with_eff_bra_trans(xc_eff[2].view(), rho1.view(), &bra_view, TAU).unwrap();
+
+        println!("fp fxc: {:?}", fp(fxc_bra_trans[0].view()));
+        println!("fp fxc: {:?}", fp(fxc_bra_trans[1].view()));
+    }
 }
 
 mod test_xcpot_from_dm_naive {
