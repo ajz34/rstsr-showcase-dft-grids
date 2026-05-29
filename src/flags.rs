@@ -59,6 +59,14 @@ impl NIDenType {
     }
 }
 
+/// Parallelization strategy for numint.
+///
+/// This enum allows three kinds of parallelization strategies by `From` trait implementations:
+///
+/// - usize number : parallel with given chunk size;
+/// - None : Use default chunk size determined by the implementation function;
+/// - bool : parallel with auto-chunking if true, or serial if false.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NIPar {
     Par { chunk_size: Option<usize> },
     Serial,
@@ -84,4 +92,10 @@ impl From<bool> for NIPar {
             NIPar::Serial
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NISpin {
+    Unpolarized,
+    Polarized,
 }
