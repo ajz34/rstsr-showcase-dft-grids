@@ -1,4 +1,5 @@
-//! Naive implementation of getting the XC potential from the density matrix.
+//! Naive implementation of getting the XC potential, which directly corresponds to energy, fock and
+//! response.
 
 use crate::prelude::*;
 use libxc::prelude::*;

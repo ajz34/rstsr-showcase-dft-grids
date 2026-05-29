@@ -5,7 +5,7 @@ pub mod error;
 pub mod flags;
 pub mod numint_matmul;
 pub mod xceff;
-pub mod xcpot_dm_naive;
+pub mod xcpot_fock_naive;
 
 pub mod prelude {
     #![allow(unused)]
@@ -16,7 +16,7 @@ pub mod prelude {
     pub use flags::*;
     pub use numint_matmul::nimatmul::*;
     pub use xceff::libxc_wrap::*;
-    pub use xcpot_dm_naive::*;
+    pub use xcpot_fock_naive::*;
 
     pub(crate) use NIDenType::*;
 
